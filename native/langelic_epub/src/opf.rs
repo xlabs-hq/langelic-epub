@@ -75,15 +75,13 @@ fn find_opf_path(container_xml: &str) -> Result<String, AppError> {
     let mut buf = Vec::new();
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Empty(e)) | Ok(Event::Start(e)) => {
-                if local_name(&e) == b"rootfile" {
-                    for attr in e.attributes().with_checks(false).flatten() {
-                        if attr.key.as_ref() == b"full-path" {
-                            let v = attr
-                                .unescape_value()
-                                .map_err(|err| AppError::MalformedOpf(err.to_string()))?;
-                            return Ok(v.into_owned());
-                        }
+            Ok(Event::Empty(e)) | Ok(Event::Start(e)) if local_name(&e) == b"rootfile" => {
+                for attr in e.attributes().with_checks(false).flatten() {
+                    if attr.key.as_ref() == b"full-path" {
+                        let v = attr
+                            .unescape_value()
+                            .map_err(|err| AppError::MalformedOpf(err.to_string()))?;
+                        return Ok(v.into_owned());
                     }
                 }
             }
@@ -206,18 +204,14 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                     Section::None => {}
                 }
             }
-            Event::Text(t) => {
-                if section == Section::Metadata && current_dc.is_some() {
-                    if let Ok(s) = t.decode() {
-                        current_text.push_str(&s);
-                    }
+            Event::Text(t) if section == Section::Metadata && current_dc.is_some() => {
+                if let Ok(s) = t.decode() {
+                    current_text.push_str(&s);
                 }
             }
-            Event::GeneralRef(r) => {
-                if section == Section::Metadata && current_dc.is_some() {
-                    if let Some(resolved) = resolve_entity(r.as_ref()) {
-                        current_text.push_str(&resolved);
-                    }
+            Event::GeneralRef(r) if section == Section::Metadata && current_dc.is_some() => {
+                if let Some(resolved) = resolve_entity(r.as_ref()) {
+                    current_text.push_str(&resolved);
                 }
             }
             Event::End(ref e) => {
