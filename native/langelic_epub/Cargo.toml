@@ -8,18 +8,25 @@ description = "Rustler NIF for EPUB read/write"
 [lib]
 crate-type = ["cdylib"]
 
+# rustler_precompiled 0.9 + rustler 0.37 require the crate to expose NIF
+# version features so the release action can pick a target ABI at build time
+# via `--features nif_version_2_XX`. See:
+# https://hexdocs.pm/rustler_precompiled/precompilation_guide.html
+[features]
+default = ["nif_version_2_15"]
+nif_version_2_14 = ["rustler/nif_version_2_14"]
+nif_version_2_15 = ["rustler/nif_version_2_15"]
+nif_version_2_16 = ["rustler/nif_version_2_16"]
+nif_version_2_17 = ["rustler/nif_version_2_17"]
+
 [dependencies]
 rustler = "0.37"
 iepub = "1.3.4"
 epub-builder = "0.8.3"
 quick-xml = "0.39"
-zip = "2.2"
+zip = "7"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
-# Forced here to override iepub 1.3.4's transitive pin on lzma-rust2 0.15.3,
-# which is incompatible with current crc releases. Remove when iepub bumps its
-# zip dep.
-lzma-rust2 = { version = "=0.15.7", default-features = false }
 
 [profile.release]
 strip = true
