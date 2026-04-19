@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MIX_ENV: test
+  # Forces rustler_precompiled to build the NIF from source rather than
+  # downloading a release binary that doesn't yet exist for the PR commit.
+  LANGELIC_EPUB_BUILD: "true"
+
+jobs:
+  test:
+    name: test / ${{ matrix.os }} / OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            otp: "27"
+            elixir: "1.17"
+          - os: ubuntu-latest
+            otp: "26"
+            elixir: "1.16"
+          - os: macos-latest
+            otp: "27"
+            elixir: "1.17"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          otp-version: ${{ matrix.otp }}
+          elixir-version: ${{ matrix.elixir }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install epubcheck (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y epubcheck
+
+      - name: Install epubcheck (macOS)
+        if: runner.os == 'macOS'
+        run: brew install epubcheck
+
+      - name: Cache Mix deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('native/langelic_epub/Cargo.lock') }}
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: native/langelic_epub/target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('native/langelic_epub/Cargo.lock', 'native/langelic_epub/src/**') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-
+
+      - run: mix deps.get
+
+      - name: Check versions in sync
+        run: bin/check_versions
+
+      - run: mix format --check-formatted
+
+      - run: mix compile --warnings-as-errors
+
+      - run: mix credo --strict
+
+      - run: mix test --include external
+
+      - name: Cargo fmt
+        run: cargo fmt --manifest-path native/langelic_epub/Cargo.toml -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --manifest-path native/langelic_epub/Cargo.toml --all-targets -- -D warnings
+
+  dialyzer:
+    # Dialyzer on a single matrix cell — it's expensive and redundant across
+    # OTP/Elixir versions.
+    name: dialyzer
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27"
+          elixir-version: "1.17"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache deps and PLT
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+            priv/plts
+          key: dialyzer-${{ hashFiles('mix.lock') }}
+
+      - run: mix deps.get
+
+      - run: mix compile
+        env:
+          LANGELIC_EPUB_BUILD: "true"
+
+      - run: mix dialyzer --format github

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Verify that the version in mix.exs matches the version in
+# native/langelic_epub/Cargo.toml. Called from CI and before release.
+set -euo pipefail
+
+mix_version=$(grep -E '^\s*@version\s+"' mix.exs | sed -E 's/.*"([^"]+)".*/\1/')
+cargo_version=$(grep -E '^version\s*=' native/langelic_epub/Cargo.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+
+if [[ -z "$mix_version" ]]; then
+  echo "check_versions: could not read @version from mix.exs" >&2
+  exit 2
+fi
+if [[ -z "$cargo_version" ]]; then
+  echo "check_versions: could not read version from native/langelic_epub/Cargo.toml" >&2
+  exit 2
+fi
+
+if [[ "$mix_version" != "$cargo_version" ]]; then
+  echo "check_versions: version mismatch" >&2
+  echo "  mix.exs:    $mix_version" >&2
+  echo "  Cargo.toml: $cargo_version" >&2
+  exit 1
+fi
+
+echo "check_versions: OK ($mix_version)"

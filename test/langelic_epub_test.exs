@@ -93,6 +93,7 @@ defmodule LangelicEpubTest do
           # iepub drops it (spike finding #1).
           assert is_binary(doc.language),
                  "expected language to be populated (OPF re-parse check)"
+
           assert is_list(doc.spine)
           assert doc.spine != []
 

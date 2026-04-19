@@ -33,9 +33,8 @@ fn build<'a>(env: Env<'a>, doc: Document) -> NifResult<Term<'a>> {
     let result: Result<Vec<u8>, AppError> = catch_panic(move || writer::build(&doc));
     match result {
         Ok(bytes) => {
-            let mut bin = OwnedBinary::new(bytes.len()).ok_or(rustler::Error::Term(Box::new(
-                "failed to allocate binary",
-            )))?;
+            let mut bin = OwnedBinary::new(bytes.len())
+                .ok_or(rustler::Error::Term(Box::new("failed to allocate binary")))?;
             bin.as_mut_slice().copy_from_slice(&bytes);
             Ok((rustler::types::atom::ok(), Binary::from_owned(bin, env)).encode(env))
         }

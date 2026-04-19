@@ -28,6 +28,9 @@ langelic_epub-*.tar
 # Precompiled NIF binary (regenerated on every build).
 /priv/native/
 
+# Dialyzer PLTs (regenerated on first run).
+/priv/plts/
+
 # Spike sample EPUBs (gitignored; see test/support/fixtures/README.md).
 /test/support/fixtures/samples/*.epub
 

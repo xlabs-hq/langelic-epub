@@ -70,6 +70,7 @@ defmodule LangelicEpub.RoundTripTest do
           assert rebuilt.identifier == original.identifier
           # epub-builder may normalize the language tag; tolerate that.
           assert is_binary(rebuilt.language)
+
           assert length(rebuilt.spine) == length(original.spine),
                  "spine length mismatch for #{unquote(name)}"
 

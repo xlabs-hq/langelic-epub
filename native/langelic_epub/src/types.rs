@@ -11,8 +11,7 @@ pub struct Bytes(pub Vec<u8>);
 
 impl Encoder for Bytes {
     fn encode<'a>(&self, env: Env<'a>) -> Term<'a> {
-        let mut owned =
-            OwnedBinary::new(self.0.len()).expect("OwnedBinary allocation failed");
+        let mut owned = OwnedBinary::new(self.0.len()).expect("OwnedBinary allocation failed");
         owned.as_mut_slice().copy_from_slice(&self.0);
         Binary::from_owned(owned, env).to_term(env)
     }

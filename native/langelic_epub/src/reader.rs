@@ -28,8 +28,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
     let (opf_bytes, opf_path) = opf::extract_from_zip(bytes)?;
     let extras = opf::parse_extras(&opf_bytes, &opf_path)?;
 
-    let book = read_from_vec(bytes.to_vec())
-        .map_err(|e| AppError::MalformedOpf(format!("{:?}", e)))?;
+    let book =
+        read_from_vec(bytes.to_vec()).map_err(|e| AppError::MalformedOpf(format!("{:?}", e)))?;
 
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| AppError::InvalidZip(e.to_string()))?;
@@ -127,7 +127,10 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         })
     });
 
-    let toc: Vec<NavItem> = book.nav().map(|n| convert_nav(n, &extras.opf_dir)).collect();
+    let toc: Vec<NavItem> = book
+        .nav()
+        .map(|n| convert_nav(n, &extras.opf_dir))
+        .collect();
 
     let title = extras
         .title
@@ -141,9 +144,7 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         .unwrap_or_else(|| book.identifier().to_string());
 
     let creators = if extras.creators.is_empty() {
-        book.creator()
-            .map(split_creators)
-            .unwrap_or_default()
+        book.creator().map(split_creators).unwrap_or_default()
     } else {
         extras.creators.clone()
     };

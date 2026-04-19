@@ -180,7 +180,12 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                         if name == b"item" {
                             let item = parse_manifest_item(e)?;
                             if let Some((id, mi)) = item {
-                                if mi.properties.as_deref().unwrap_or("").contains("cover-image") {
+                                if mi
+                                    .properties
+                                    .as_deref()
+                                    .unwrap_or("")
+                                    .contains("cover-image")
+                                {
                                     extras.cover_id.get_or_insert_with(|| id.clone());
                                 }
                                 extras.manifest.insert(id, mi);
@@ -341,12 +346,10 @@ fn resolve_entity(raw: &[u8]) -> Option<String> {
         "gt" => Some(">".to_string()),
         "quot" => Some("\"".to_string()),
         "apos" => Some("'".to_string()),
-        hex if hex.starts_with("#x") || hex.starts_with("#X") => {
-            u32::from_str_radix(&hex[2..], 16)
-                .ok()
-                .and_then(char::from_u32)
-                .map(|c| c.to_string())
-        }
+        hex if hex.starts_with("#x") || hex.starts_with("#X") => u32::from_str_radix(&hex[2..], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string()),
         num if num.starts_with('#') => num[1..]
             .parse::<u32>()
             .ok()

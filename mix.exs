@@ -15,7 +15,12 @@ defmodule LangelicEpub.MixProject do
       package: package(),
       docs: docs(),
       description: "EPUB read and write for Elixir, backed by a Rustler NIF.",
-      source_url: @source_url
+      source_url: @source_url,
+      dialyzer: [
+        plt_core_path: "priv/plts",
+        plt_file: {:no_warn, "priv/plts/project.plt"},
+        flags: [:error_handling, :unknown, :underspecs]
+      ]
     ]
   end
 

@@ -25,25 +25,37 @@ defmodule LangelicEpub.BuildTest do
   describe "build/1 validation" do
     test "rejects missing title" do
       doc = base_doc(title: "")
-      assert {:error, %Error{kind: :missing_required_field, message: msg}} = LangelicEpub.build(doc)
+
+      assert {:error, %Error{kind: :missing_required_field, message: msg}} =
+               LangelicEpub.build(doc)
+
       assert msg =~ "title"
     end
 
     test "rejects missing identifier" do
       doc = base_doc(identifier: "")
-      assert {:error, %Error{kind: :missing_required_field, message: msg}} = LangelicEpub.build(doc)
+
+      assert {:error, %Error{kind: :missing_required_field, message: msg}} =
+               LangelicEpub.build(doc)
+
       assert msg =~ "identifier"
     end
 
     test "rejects missing language (nil)" do
       doc = base_doc(language: nil)
-      assert {:error, %Error{kind: :missing_required_field, message: msg}} = LangelicEpub.build(doc)
+
+      assert {:error, %Error{kind: :missing_required_field, message: msg}} =
+               LangelicEpub.build(doc)
+
       assert msg =~ "language"
     end
 
     test "rejects empty-string language" do
       doc = base_doc(language: "")
-      assert {:error, %Error{kind: :missing_required_field, message: msg}} = LangelicEpub.build(doc)
+
+      assert {:error, %Error{kind: :missing_required_field, message: msg}} =
+               LangelicEpub.build(doc)
+
       assert msg =~ "language"
     end
 

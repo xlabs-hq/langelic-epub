@@ -36,10 +36,9 @@ pub fn build(doc: &Document) -> Result<Vec<u8>, AppError> {
 }
 
 fn build_with_epub_builder(doc: &Document) -> Result<Vec<u8>, AppError> {
-    let mut builder = EpubBuilder::new(
-        ZipLibrary::new().map_err(|e| AppError::Io(format!("zip init: {}", e)))?,
-    )
-    .map_err(|e| AppError::Io(format!("epub-builder init: {}", e)))?;
+    let mut builder =
+        EpubBuilder::new(ZipLibrary::new().map_err(|e| AppError::Io(format!("zip init: {}", e)))?)
+            .map_err(|e| AppError::Io(format!("epub-builder init: {}", e)))?;
 
     builder.epub_version(EpubVersion::V30);
     builder.set_uuid(identifier_to_uuid(&doc.identifier));
@@ -122,8 +121,7 @@ fn validate(doc: &Document) -> Result<(), AppError> {
         return Err(AppError::MissingRequiredField("identifier"));
     }
     match doc.language.as_deref() {
-        None => return Err(AppError::MissingRequiredField("language")),
-        Some(s) if s.is_empty() => return Err(AppError::MissingRequiredField("language")),
+        None | Some("") => return Err(AppError::MissingRequiredField("language")),
         _ => {}
     }
 
@@ -296,10 +294,7 @@ fn find_opf_path_in_archive(
         .map_err(|_| AppError::MalformedOpf("container.xml not utf-8".to_string()))?;
     // Very small parser: look for full-path="...".
     let needle = "full-path=\"";
-    let start = s
-        .find(needle)
-        .ok_or_else(|| AppError::MissingContainer)?
-        + needle.len();
+    let start = s.find(needle).ok_or(AppError::MissingContainer)? + needle.len();
     let end = s[start..]
         .find('"')
         .ok_or_else(|| AppError::MalformedOpf("unterminated full-path".to_string()))?;

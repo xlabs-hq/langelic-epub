@@ -6,8 +6,7 @@ defmodule LangelicEpub.Native do
   use RustlerPrecompiled,
     otp_app: :langelic_epub,
     crate: "langelic_epub",
-    base_url:
-      "https://github.com/xlabs-hq/langelic-epub/releases/download/v#{version}",
+    base_url: "https://github.com/xlabs-hq/langelic-epub/releases/download/v#{version}",
     force_build:
       System.get_env("LANGELIC_EPUB_BUILD") in ["1", "true"] or
         Mix.env() in [:dev, :test],
