@@ -1,0 +1,5 @@
+# Cross-compile profile configuration for precompiled NIFs.
+# rustler_precompiled consumes this when building release artifacts.
+
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]

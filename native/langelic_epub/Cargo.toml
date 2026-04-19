@@ -1,0 +1,27 @@
+[package]
+name = "langelic_epub"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Rustler NIF for EPUB read/write"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.37"
+iepub = "1.3.4"
+epub-builder = "0.8.3"
+quick-xml = "0.39"
+zip = "2.2"
+thiserror = "2"
+uuid = { version = "1", features = ["v4", "v5"] }
+# Forced here to override iepub 1.3.4's transitive pin on lzma-rust2 0.15.3,
+# which is incompatible with current crc releases. Remove when iepub bumps its
+# zip dep.
+lzma-rust2 = { version = "=0.15.7", default-features = false }
+
+[profile.release]
+strip = true
+lto = "thin"
+opt-level = 3
