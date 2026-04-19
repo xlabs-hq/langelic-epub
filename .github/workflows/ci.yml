@@ -54,7 +54,7 @@ jobs:
         run: brew install epubcheck
 
       - name: Cache Mix deps
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
@@ -64,7 +64,7 @@ jobs:
             mix-${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -72,7 +72,7 @@ jobs:
           key: cargo-registry-${{ runner.os }}-${{ hashFiles('native/langelic_epub/Cargo.lock') }}
 
       - name: Cache Cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: native/langelic_epub/target
           key: cargo-target-${{ runner.os }}-${{ hashFiles('native/langelic_epub/Cargo.lock', 'native/langelic_epub/src/**') }}
@@ -115,7 +115,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Cache deps and PLT
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             deps
