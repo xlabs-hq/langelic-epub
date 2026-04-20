@@ -3,14 +3,16 @@ defmodule LangelicEpub.Native do
 
   version = Mix.Project.config()[:version]
 
-  # No published GitHub release yet — build from source until v0.1.0 binaries
-  # are actually attached. This can flip back to opt-in once release artifacts
-  # exist and rustler_precompiled can resolve them.
   use RustlerPrecompiled,
     otp_app: :langelic_epub,
     crate: "langelic_epub",
     base_url: "https://github.com/xlabs-hq/langelic-epub/releases/download/v#{version}",
-    force_build: true,
+    # End users on :prod get the precompiled binary matching their platform.
+    # Local dev and tests always compile from source so CI and contributors
+    # never race against Release workflow timing.
+    force_build:
+      System.get_env("LANGELIC_EPUB_BUILD") in ["1", "true"] or
+        Mix.env() in [:dev, :test],
     targets: ~w(
       aarch64-apple-darwin
       x86_64-apple-darwin

@@ -1,0 +1,22 @@
+langelic_epub
+Copyright 2026 xlabs.hq
+
+This product includes software developed by third parties under separate
+licenses. The precompiled NIF shipped with this package statically links the
+following Rust crates:
+
+1. iepub (https://github.com/inkroom/iepub) — used for EPUB structure
+   parsing (spine order, TOC tree, cover detection).
+   Licensed under the MIT License.
+
+2. epub-builder (https://github.com/crowdagger/epub-builder) — used for
+   EPUB 3 generation (content.opf, nav.xhtml, toc.ncx, zip packaging).
+   Licensed under the Mozilla Public License, version 2.0 (MPL-2.0).
+
+   MPL-2.0 applies on a per-file basis. Source for any modified
+   epub-builder files, should they exist, would be available alongside the
+   compiled artifact; this project does not modify epub-builder sources.
+   The full MPL-2.0 text is at https://www.mozilla.org/en-US/MPL/2.0/.
+
+3. quick-xml, zip, thiserror, uuid, rustler, lzma-rust2 — licensed under
+   MIT or Apache-2.0 as indicated by each crate's repository.

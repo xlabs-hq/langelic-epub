@@ -63,9 +63,24 @@ defmodule LangelicEpub.MixProject do
 
   defp docs do
     [
-      main: "LangelicEpub",
-      extras: ["README.md", "CHANGELOG.md"],
-      source_ref: "v#{@version}"
+      main: "readme",
+      extras: [
+        "README.md",
+        "CHANGELOG.md",
+        LICENSE: [filename: "license", title: "License"],
+        NOTICE: [filename: "notice", title: "Notice"]
+      ],
+      source_ref: "v#{@version}",
+      groups_for_modules: [
+        "Public API": [LangelicEpub],
+        "Data structures": [
+          LangelicEpub.Document,
+          LangelicEpub.Chapter,
+          LangelicEpub.Asset,
+          LangelicEpub.NavItem
+        ],
+        Errors: [LangelicEpub.Error]
+      ]
     ]
   end
 end
