@@ -1,17 +1,17 @@
-//! EPUB reader backed by iepub for structure + custom zip/OPF reads for
+//! EPUB reader backed by iepub for metadata + custom zip/OPF reads for
 //! raw content and fields iepub silently drops.
 //!
-//! iepub is great at walking the spine, TOC tree, and cover detection, but:
+//! iepub is useful for TOC tree and cover detection, but:
 //!   * `book.language()` / `book.rights()` return `None` even when the OPF
 //!     sets them — iepub's `BookInfo` doesn't have those fields. We recover
 //!     them via an OPF re-parse (`crate::opf`).
 //!   * `book.creator()` collapses multiple `<dc:creator>` entries into a
 //!     single comma-joined string. Again we use OPF re-parse for a proper
 //!     `Vec<String>`.
-//!   * iepub's lazy chapter loader (`data_mut()`) returns only the `<body>`
-//!     content, not the full XHTML file. We want raw XHTML bytes so callers
-//!     can modify whatever they like, so we read each file directly from the
-//!     zip.
+//!   * iepub's spine walk misses namespaced OPF structures like
+//!     `<opf:spine>`. We build chapters from our namespace-aware OPF re-parse.
+//!   * We want raw XHTML bytes so callers can modify whatever they like, so
+//!     we read each spine file directly from the zip.
 //!
 //! File paths exposed on the returned `Document` are **OPF-relative** — the
 //! same paths you'd see in the OPF `<manifest>` `href` attributes. This keeps
@@ -21,6 +21,8 @@ use crate::error::AppError;
 use crate::opf::{self, ManifestItem};
 use crate::types::{Asset, Bytes, Chapter, Document, NavItem};
 use iepub::prelude::*;
+use quick_xml::events::Event;
+use quick_xml::Reader as XmlReader;
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
@@ -44,53 +46,8 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
 
     let spine_ids: HashSet<String> = extras.spine.iter().cloned().collect();
 
-    let mut spine: Vec<Chapter> = Vec::new();
     let mut spine_opf_hrefs: HashSet<String> = HashSet::new();
-    let mut seen_ids: HashSet<String> = HashSet::new();
-    for html in book.chapters() {
-        let archive_file_name = html.file_name().to_string();
-        let archive_path = resolve_path(&extras.opf_dir, &archive_file_name);
-        let opf_relative = to_opf_relative(&extras.opf_dir, &archive_file_name);
-
-        // iepub adds a chapter per <itemref>; some EPUBs have multiple
-        // <itemref>s pointing at the same file via fragment identifiers, and
-        // iepub doesn't collapse them. Dedupe so each unique file appears
-        // once in the spine.
-        if !spine_opf_hrefs.insert(opf_relative.clone()) {
-            continue;
-        }
-
-        let id = href_to_id
-            .get(&opf_relative)
-            .or_else(|| href_to_id.get(&archive_path))
-            .cloned()
-            .unwrap_or_else(|| derive_id_from_href(&opf_relative));
-        if !seen_ids.insert(id.clone()) {
-            continue;
-        }
-
-        let data = read_file_bytes(&mut archive, &archive_path)?;
-        let title = {
-            let t = html.title();
-            if t.is_empty() {
-                None
-            } else {
-                Some(t.to_string())
-            }
-        };
-        let media_type = extras
-            .manifest
-            .get(&id)
-            .map(|mi| mi.media_type.clone())
-            .unwrap_or_else(|| "application/xhtml+xml".to_string());
-        spine.push(Chapter {
-            id,
-            file_name: opf_relative,
-            title,
-            media_type,
-            data: Bytes(data),
-        });
-    }
+    let spine = build_spine_from_extras(&mut archive, &extras, &mut spine_opf_hrefs)?;
 
     let mut assets: Vec<Asset> = Vec::new();
     for (id, mi) in &extras.manifest {
@@ -190,6 +147,44 @@ fn convert_nav(nav: &EpubNav, opf_dir: &str) -> NavItem {
     }
 }
 
+fn build_spine_from_extras(
+    archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
+    extras: &opf::OpfExtras,
+    spine_opf_hrefs: &mut HashSet<String>,
+) -> Result<Vec<Chapter>, AppError> {
+    let mut spine: Vec<Chapter> = Vec::new();
+    let mut seen_ids: HashSet<String> = HashSet::new();
+
+    for idref in &extras.spine {
+        let Some(mi) = extras.manifest.get(idref) else {
+            continue;
+        };
+        let opf_relative = strip_fragment(&mi.href).to_string();
+
+        // Some EPUBs have multiple <itemref>s pointing at the same file via
+        // fragment identifiers. Dedupe so each unique file appears once.
+        if !spine_opf_hrefs.insert(opf_relative.clone()) {
+            continue;
+        }
+        if !seen_ids.insert(idref.clone()) {
+            continue;
+        }
+
+        let archive_path = resolve_path(&extras.opf_dir, &mi.href);
+        let data = read_file_bytes(archive, &archive_path)?;
+        let title = extract_xhtml_title(&data);
+        spine.push(Chapter {
+            id: idref.clone(),
+            file_name: opf_relative,
+            title,
+            media_type: mi.media_type.clone(),
+            data: Bytes(data),
+        });
+    }
+
+    Ok(spine)
+}
+
 fn read_file_bytes(
     archive: &mut zip::ZipArchive<Cursor<&[u8]>>,
     path: &str,
@@ -205,6 +200,49 @@ fn read_file_bytes(
 
 fn strip_fragment(href: &str) -> &str {
     href.split('#').next().unwrap_or(href)
+}
+
+fn extract_xhtml_title(data: &[u8]) -> Option<String> {
+    let mut reader = XmlReader::from_reader(data);
+    reader.config_mut().trim_text(false);
+
+    let mut buf = Vec::new();
+    let mut in_title = false;
+    let mut title = String::new();
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(ref e)) if local_name_bytes(e.name().into_inner()) == b"title" => {
+                in_title = true;
+                title.clear();
+            }
+            Ok(Event::Text(t)) if in_title => {
+                if let Ok(s) = t.decode() {
+                    title.push_str(&s);
+                }
+            }
+            Ok(Event::GeneralRef(r)) if in_title => {
+                if let Some(resolved) = resolve_xml_entity(r.as_ref()) {
+                    title.push_str(&resolved);
+                }
+            }
+            Ok(Event::End(ref e))
+                if in_title && local_name_bytes(e.name().into_inner()) == b"title" =>
+            {
+                let title = title.trim();
+                if title.is_empty() {
+                    return None;
+                }
+                return Some(title.to_string());
+            }
+            Ok(Event::Eof) => break,
+            Err(_) => return None,
+            _ => {}
+        }
+        buf.clear();
+    }
+
+    None
 }
 
 fn resolve_path(opf_dir: &str, href: &str) -> String {
@@ -248,10 +286,6 @@ fn normalize_path(path: &str) -> String {
     parts.join("/")
 }
 
-fn derive_id_from_href(href: &str) -> String {
-    href.replace(['/', '.', ' '], "_")
-}
-
 fn is_nav_or_ncx(mi: &ManifestItem) -> bool {
     if mi.media_type == "application/x-dtbncx+xml" {
         return true;
@@ -262,6 +296,34 @@ fn is_nav_or_ncx(mi: &ManifestItem) -> bool {
         }
     }
     false
+}
+
+fn local_name_bytes(bytes: &[u8]) -> &[u8] {
+    match bytes.iter().position(|&b| b == b':') {
+        Some(idx) => &bytes[idx + 1..],
+        None => bytes,
+    }
+}
+
+fn resolve_xml_entity(raw: &[u8]) -> Option<String> {
+    let s = std::str::from_utf8(raw).ok()?;
+    match s {
+        "amp" => Some("&".to_string()),
+        "lt" => Some("<".to_string()),
+        "gt" => Some(">".to_string()),
+        "quot" => Some("\"".to_string()),
+        "apos" => Some("'".to_string()),
+        hex if hex.starts_with("#x") || hex.starts_with("#X") => u32::from_str_radix(&hex[2..], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string()),
+        num if num.starts_with('#') => num[1..]
+            .parse::<u32>()
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string()),
+        other => Some(format!("&{};", other)),
+    }
 }
 
 fn split_creators(joined: &str) -> Vec<String> {

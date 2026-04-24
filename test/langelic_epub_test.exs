@@ -55,6 +55,37 @@ defmodule LangelicEpubTest do
     end
   end
 
+  describe "parse/1 on a namespaced EPUB 2 OPF" do
+    test "builds the spine from opf-prefixed itemrefs" do
+      bytes = EpubFixtureBuilder.namespaced_opf_epub2()
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+
+      assert doc.title == "Namespaced OPF EPUB"
+      assert doc.language == "en-GB"
+      assert doc.identifier == "urn:uuid:namespaced-opf-epub-2"
+      assert doc.version == "2.0"
+
+      assert Enum.map(doc.spine, & &1.id) == ["chapter-one", "chapter-two"]
+
+      assert Enum.map(doc.spine, & &1.file_name) == [
+               "text/chapter1.xhtml",
+               "text/chapter2.xhtml"
+             ]
+
+      assert [%Chapter{} = chapter_one, %Chapter{} = chapter_two] = doc.spine
+      assert chapter_one.title == "One"
+      assert chapter_one.data =~ "Namespaced chapter one."
+      assert chapter_two.title == "Two & More"
+      assert chapter_two.data =~ "Namespaced chapter two."
+
+      asset_file_names = Enum.map(doc.assets, & &1.file_name)
+      assert "styles/book.css" in asset_file_names
+      refute "text/chapter1.xhtml" in asset_file_names
+      refute "text/chapter2.xhtml" in asset_file_names
+    end
+  end
+
   describe "parse/1 error paths" do
     test "empty bytes return an invalid_zip error" do
       assert {:error, %Error{kind: :invalid_zip}} = LangelicEpub.parse(<<>>)
