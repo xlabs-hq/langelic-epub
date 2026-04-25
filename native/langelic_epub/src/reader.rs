@@ -71,9 +71,10 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         });
     }
 
-    // Cover: prefer OPF-derived id; fall back to iepub detection by matching
-    // the cover asset's path against the manifest.
-    let cover_asset_id = extras.cover_id.clone().or_else(|| {
+    // Cover: prefer OPF-derived hints normalized to a manifest id; fall back
+    // to iepub detection by matching the cover asset's path against the
+    // manifest.
+    let cover_asset_id = resolve_cover_asset_id(&extras, &href_to_id).or_else(|| {
         book.cover().and_then(|c| {
             let archive_path = resolve_path(&extras.opf_dir, c.file_name());
             let opf_rel = to_opf_relative(&extras.opf_dir, c.file_name());
@@ -183,6 +184,23 @@ fn build_spine_from_extras(
     }
 
     Ok(spine)
+}
+
+fn resolve_cover_asset_id(
+    extras: &opf::OpfExtras,
+    href_to_id: &HashMap<String, String>,
+) -> Option<String> {
+    extras.cover_id.as_ref().and_then(|cid| {
+        if extras.manifest.contains_key(cid) {
+            return Some(cid.clone());
+        }
+
+        let stripped = strip_fragment(cid);
+        href_to_id
+            .get(stripped)
+            .or_else(|| href_to_id.get(&resolve_path(&extras.opf_dir, stripped)))
+            .cloned()
+    })
 }
 
 fn read_file_bytes(

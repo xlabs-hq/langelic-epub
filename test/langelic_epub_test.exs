@@ -86,6 +86,49 @@ defmodule LangelicEpubTest do
     end
   end
 
+  describe "parse/1 cover_asset_id" do
+    test "normalizes EPUB 2 path-form cover meta to the manifest id" do
+      bytes = EpubFixtureBuilder.cover_meta_epub2(cover_meta: "images/cover.png")
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+      assert doc.cover_asset_id == "coverpng"
+
+      assert %Asset{id: "coverpng", file_name: "images/cover.png"} =
+               Enum.find(doc.assets, &(&1.id == "coverpng"))
+    end
+
+    test "preserves EPUB 2 id-form cover meta" do
+      bytes = EpubFixtureBuilder.cover_meta_epub2(cover_meta: "coverpng")
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+      assert doc.cover_asset_id == "coverpng"
+
+      assert %Asset{id: "coverpng", file_name: "images/cover.png"} =
+               Enum.find(doc.assets, &(&1.id == "coverpng"))
+    end
+
+    test "preserves EPUB 3 cover-image manifest properties" do
+      bytes = EpubFixtureBuilder.cover_image_property_epub3()
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+      assert doc.cover_asset_id == "cover-image"
+
+      assert %Asset{id: "cover-image", file_name: "images/cover.png"} =
+               Enum.find(doc.assets, &(&1.id == "cover-image"))
+    end
+
+    test "drops malformed EPUB 2 cover meta instead of returning junk" do
+      bytes =
+        EpubFixtureBuilder.cover_meta_epub2(
+          cover_meta: "images/missing.png",
+          cover_item?: false
+        )
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+      assert doc.cover_asset_id == nil
+    end
+  end
+
   describe "parse/1 error paths" do
     test "empty bytes return an invalid_zip error" do
       assert {:error, %Error{kind: :invalid_zip}} = LangelicEpub.parse(<<>>)
