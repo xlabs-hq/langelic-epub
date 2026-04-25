@@ -121,7 +121,7 @@ jobs:
             deps
             _build
             priv/plts
-          key: dialyzer-${{ hashFiles('mix.lock') }}
+          key: dialyzer-${{ runner.os }}-otp27-elixir117-${{ hashFiles('mix.exs', 'mix.lock', 'lib/**', 'test/support/**', 'native/langelic_epub/Cargo.lock', 'native/langelic_epub/src/**') }}
 
       - run: mix deps.get
 
