@@ -21,7 +21,6 @@ nif_version_2_17 = ["rustler/nif_version_2_17"]
 
 [dependencies]
 rustler = "0.37"
-iepub = "1.3.4"
 epub-builder = "0.8.3"
 quick-xml = "0.39"
 zip = "7"

@@ -12,6 +12,9 @@ defmodule LangelicEpub.EpubFixtureBuilder do
 
   @doc """
   Build a minimal EPUB 3 fixture in memory. Returns the raw bytes.
+
+  Pass `mimetype:` to override the canonical `application/epub+zip` (e.g.
+  with a trailing newline) when exercising the lenient mimetype parser.
   """
   @spec minimal_epub3(keyword()) :: binary()
   def minimal_epub3(opts \\ []) do
@@ -20,6 +23,7 @@ defmodule LangelicEpub.EpubFixtureBuilder do
     identifier = Keyword.get(opts, :identifier, "urn:uuid:minimal-epub-3")
     creators = Keyword.get(opts, :creators, ["Jane Doe"])
     rights = Keyword.get(opts, :rights, "CC0 1.0")
+    mimetype = Keyword.get(opts, :mimetype, "application/epub+zip")
 
     chapter_xhtml = ~s"""
     <?xml version="1.0" encoding="UTF-8"?>
@@ -72,7 +76,7 @@ defmodule LangelicEpub.EpubFixtureBuilder do
     """
 
     entries = [
-      {~c"mimetype", "application/epub+zip"},
+      {~c"mimetype", mimetype},
       {~c"META-INF/container.xml", String.trim_leading(@container_xml)},
       {~c"OEBPS/content.opf", opf_xml},
       {~c"OEBPS/nav.xhtml", nav_xhtml},

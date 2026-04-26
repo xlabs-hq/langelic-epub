@@ -10,6 +10,9 @@ defmodule LangelicEpub.Error do
   Parse errors:
 
     * `:invalid_zip` — bytes are not a valid ZIP archive
+    * `:invalid_mimetype` — `mimetype` entry is missing or its content is not
+      `application/epub+zip` (a leading UTF-8 BOM and surrounding whitespace
+      are tolerated)
     * `:missing_container` — no `META-INF/container.xml`
     * `:missing_opf` — OPF file referenced in container.xml not found
     * `:malformed_opf` — OPF could not be parsed
@@ -28,6 +31,7 @@ defmodule LangelicEpub.Error do
 
   @type kind ::
           :invalid_zip
+          | :invalid_mimetype
           | :missing_container
           | :missing_opf
           | :malformed_opf

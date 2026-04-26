@@ -1,17 +1,11 @@
-//! EPUB reader backed by iepub for metadata + custom zip/OPF reads for
-//! raw content and fields iepub silently drops.
+//! EPUB reader built on a pure `zip` + `quick_xml` stack.
 //!
-//! iepub is useful for TOC tree and cover detection, but:
-//!   * `book.language()` / `book.rights()` return `None` even when the OPF
-//!     sets them — iepub's `BookInfo` doesn't have those fields. We recover
-//!     them via an OPF re-parse (`crate::opf`).
-//!   * `book.creator()` collapses multiple `<dc:creator>` entries into a
-//!     single comma-joined string. Again we use OPF re-parse for a proper
-//!     `Vec<String>`.
-//!   * iepub's spine walk misses namespaced OPF structures like
-//!     `<opf:spine>`. We build chapters from our namespace-aware OPF re-parse.
-//!   * We want raw XHTML bytes so callers can modify whatever they like, so
-//!     we read each spine file directly from the zip.
+//! All structural data (manifest, spine, metadata, cover hint) comes from
+//! `opf::parse_extras`; the table of contents comes from `toc::build`. We
+//! validate the `mimetype` envelope leniently — trailing whitespace, CRLF,
+//! and a leading UTF-8 BOM are all accepted, since Calibre, fan exporters,
+//! and several conversion tools emit them and other readers (Apple Books,
+//! ADE) tolerate them silently.
 //!
 //! File paths exposed on the returned `Document` are **OPF-relative** — the
 //! same paths you'd see in the OPF `<manifest>` `href` attributes. This keeps
@@ -19,25 +13,22 @@
 
 use crate::error::AppError;
 use crate::opf::{self, ManifestItem};
-use crate::types::{Asset, Bytes, Chapter, Document, NavItem};
-use iepub::prelude::*;
+use crate::toc;
+use crate::types::{Asset, Bytes, Chapter, Document};
 use quick_xml::events::Event;
 use quick_xml::Reader as XmlReader;
 use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read};
 
 pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
+    opf::validate_mimetype(bytes)?;
+
     let (opf_bytes, opf_path) = opf::extract_from_zip(bytes)?;
     let extras = opf::parse_extras(&opf_bytes, &opf_path)?;
-
-    let book =
-        read_from_vec(bytes.to_vec()).map_err(|e| AppError::MalformedOpf(format!("{:?}", e)))?;
 
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| AppError::InvalidZip(e.to_string()))?;
 
-    // Manifest lookups: href -> id (for id recovery from file names).
-    // Both opf-relative href and archive-absolute path keyed for lookup.
     let mut href_to_id: HashMap<String, String> = HashMap::new();
     for (id, mi) in &extras.manifest {
         href_to_id.insert(strip_fragment(&mi.href).to_string(), id.clone());
@@ -71,81 +62,25 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         });
     }
 
-    // Cover: prefer OPF-derived hints normalized to a manifest id; fall back
-    // to iepub detection by matching the cover asset's path against the
-    // manifest.
-    let cover_asset_id = resolve_cover_asset_id(&extras, &href_to_id).or_else(|| {
-        book.cover().and_then(|c| {
-            let archive_path = resolve_path(&extras.opf_dir, c.file_name());
-            let opf_rel = to_opf_relative(&extras.opf_dir, c.file_name());
-            href_to_id
-                .get(&opf_rel)
-                .or_else(|| href_to_id.get(&archive_path))
-                .cloned()
-        })
-    });
-
-    let toc: Vec<NavItem> = book
-        .nav()
-        .map(|n| convert_nav(n, &extras.opf_dir))
-        .collect();
-
-    let title = extras
-        .title
-        .clone()
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| book.title().to_string());
-    let identifier = extras
-        .identifier
-        .clone()
-        .filter(|i| !i.is_empty())
-        .unwrap_or_else(|| book.identifier().to_string());
-
-    let creators = if extras.creators.is_empty() {
-        book.creator().map(split_creators).unwrap_or_default()
-    } else {
-        extras.creators.clone()
-    };
-
-    let metadata = extras.other_dc.clone();
-    let version = extras
-        .version
-        .clone()
-        .unwrap_or_else(|| book.version().to_string());
+    let cover_asset_id = resolve_cover_asset_id(&extras, &href_to_id);
+    let toc = toc::build(&mut archive, &extras)?;
 
     Ok(Document {
-        title,
-        creators,
+        title: extras.title.clone().unwrap_or_default(),
+        creators: extras.creators.clone(),
         language: extras.language.clone(),
-        identifier,
-        publisher: extras
-            .publisher
-            .clone()
-            .or_else(|| book.publisher().map(String::from)),
-        date: extras
-            .date
-            .clone()
-            .or_else(|| book.date().map(String::from)),
-        description: extras
-            .description
-            .clone()
-            .or_else(|| book.description().map(String::from)),
+        identifier: extras.identifier.clone().unwrap_or_default(),
+        publisher: extras.publisher.clone(),
+        date: extras.date.clone(),
+        description: extras.description.clone(),
         rights: extras.rights.clone(),
-        metadata,
+        metadata: extras.other_dc.clone(),
         spine,
         assets,
         toc,
         cover_asset_id,
-        version,
+        version: extras.version.clone().unwrap_or_default(),
     })
-}
-
-fn convert_nav(nav: &EpubNav, opf_dir: &str) -> NavItem {
-    NavItem {
-        title: nav.title().to_string(),
-        href: to_opf_relative(opf_dir, nav.file_name()),
-        children: nav.child().map(|c| convert_nav(c, opf_dir)).collect(),
-    }
 }
 
 fn build_spine_from_extras(
@@ -274,22 +209,6 @@ fn resolve_path(opf_dir: &str, href: &str) -> String {
     normalize_path(&format!("{}{}", opf_dir, href))
 }
 
-fn to_opf_relative(opf_dir: &str, archive_path: &str) -> String {
-    let archive_path = strip_fragment(archive_path);
-    let normalized = normalize_path(archive_path);
-    if opf_dir.is_empty() {
-        return normalized;
-    }
-    let dir = opf_dir.trim_end_matches('/');
-    if normalized == dir {
-        return String::new();
-    }
-    if let Some(rest) = normalized.strip_prefix(&format!("{}/", dir)) {
-        return rest.to_string();
-    }
-    normalized
-}
-
 fn normalize_path(path: &str) -> String {
     let mut parts: Vec<&str> = Vec::new();
     for segment in path.split('/') {
@@ -342,12 +261,4 @@ fn resolve_xml_entity(raw: &[u8]) -> Option<String> {
             .map(|c| c.to_string()),
         other => Some(format!("&{};", other)),
     }
-}
-
-fn split_creators(joined: &str) -> Vec<String> {
-    joined
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect()
 }

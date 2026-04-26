@@ -74,6 +74,7 @@ pub struct Document {
 #[allow(dead_code)]
 pub enum ErrorKind {
     InvalidZip,
+    InvalidMimetype,
     MissingContainer,
     MissingOpf,
     MalformedOpf,

@@ -43,6 +43,39 @@ pub struct ManifestItem {
     pub properties: Option<String>,
 }
 
+/// The OCF spec says `mimetype` must contain exactly `application/epub+zip`,
+/// but Calibre, fan exporters, and several conversion tools emit a trailing
+/// LF/CRLF/space (and occasionally a UTF-8 BOM). Other readers (Apple Books,
+/// ADE) accept these silently, so we trim before comparing rather than
+/// rejecting the file.
+const EPUB_MIMETYPE: &str = "application/epub+zip";
+const UTF8_BOM: &[u8] = &[0xEF, 0xBB, 0xBF];
+
+pub fn validate_mimetype(epub_bytes: &[u8]) -> Result<(), AppError> {
+    let mut archive = zip::ZipArchive::new(Cursor::new(epub_bytes))
+        .map_err(|e| AppError::InvalidZip(e.to_string()))?;
+
+    let mut entry = archive
+        .by_name("mimetype")
+        .map_err(|_| AppError::InvalidMimetype("missing mimetype entry".to_string()))?;
+    let mut buf = Vec::new();
+    entry
+        .read_to_end(&mut buf)
+        .map_err(|e| AppError::Io(format!("reading mimetype: {}", e)))?;
+
+    let stripped: &[u8] = buf.strip_prefix(UTF8_BOM).unwrap_or(&buf);
+    let text = std::str::from_utf8(stripped)
+        .map_err(|_| AppError::InvalidMimetype("mimetype is not valid UTF-8".to_string()))?
+        .trim();
+    if text != EPUB_MIMETYPE {
+        return Err(AppError::InvalidMimetype(format!(
+            "expected {:?}, got {:?}",
+            EPUB_MIMETYPE, text
+        )));
+    }
+    Ok(())
+}
+
 pub fn extract_from_zip(epub_bytes: &[u8]) -> Result<(Vec<u8>, String), AppError> {
     let mut archive = zip::ZipArchive::new(Cursor::new(epub_bytes))
         .map_err(|e| AppError::InvalidZip(e.to_string()))?;

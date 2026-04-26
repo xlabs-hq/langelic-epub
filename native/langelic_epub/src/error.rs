@@ -7,6 +7,9 @@ pub enum AppError {
     #[error("invalid zip archive: {0}")]
     InvalidZip(String),
 
+    #[error("invalid mimetype: {0}")]
+    InvalidMimetype(String),
+
     #[error("missing META-INF/container.xml")]
     MissingContainer,
 
@@ -36,6 +39,7 @@ impl AppError {
     pub fn kind(&self) -> ErrorKind {
         match self {
             AppError::InvalidZip(_) => ErrorKind::InvalidZip,
+            AppError::InvalidMimetype(_) => ErrorKind::InvalidMimetype,
             AppError::MissingContainer => ErrorKind::MissingContainer,
             AppError::MissingOpf(_) => ErrorKind::MissingOpf,
             AppError::MalformedOpf(_) => ErrorKind::MalformedOpf,

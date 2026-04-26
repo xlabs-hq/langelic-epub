@@ -11,6 +11,7 @@
 mod error;
 mod opf;
 mod reader;
+mod toc;
 mod types;
 mod writer;
 
