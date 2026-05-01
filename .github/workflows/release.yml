@@ -58,6 +58,6 @@ jobs:
           project-dir: native/langelic_epub
 
       - name: Publish to GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ${{ steps.build-crate.outputs.file-path }}
