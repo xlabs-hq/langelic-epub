@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `mimetype` zip entry is missing or its content (after trimming a
   UTF-8 BOM and whitespace) is not `application/epub+zip`.
 
+### Fixed
+
+- Dublin Core metadata is now matched by its namespace URI rather than a
+  hard-coded `dc:` prefix (the OPF is parsed with quick-xml's `NsReader`), so
+  `dc:`-equivalent elements bound to a non-standard prefix or a default
+  namespace are recovered instead of silently dropped. Parsing the OPF also
+  now rejects elements that declare more than 256 namespace bindings, bounding
+  a malformed or hostile package.
+
 ## [0.1.0] - 2026-04-20
 
 ### Added

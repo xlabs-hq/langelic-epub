@@ -7,8 +7,8 @@
 
 use crate::error::AppError;
 use quick_xml::events::Event;
-use quick_xml::Reader;
-use quick_xml::XmlVersion;
+use quick_xml::name::ResolveResult;
+use quick_xml::{NsReader, Reader, XmlVersion};
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
@@ -134,7 +134,11 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
         ..Default::default()
     };
 
-    let mut reader = Reader::from_reader(opf_bytes);
+    // NsReader resolves element namespaces, so Dublin Core elements are matched
+    // by their namespace URI (under any prefix, or a default-namespace binding)
+    // rather than a hard-coded `dc:` prefix. It also caps namespace declarations
+    // per element (quick-xml rejects >256), bounding a malformed/hostile OPF.
+    let mut reader = NsReader::from_reader(opf_bytes);
     reader.config_mut().trim_text(true);
 
     #[derive(PartialEq)]
@@ -151,15 +155,14 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
     let mut buf = Vec::new();
 
     loop {
-        let event = reader
-            .read_event_into(&mut buf)
+        let (ns, event) = reader
+            .read_resolved_event_into(&mut buf)
             .map_err(|e| AppError::MalformedOpf(e.to_string()))?;
 
         match event {
             Event::Start(ref e) => {
-                let raw_name = e.name().into_inner().to_vec();
-                let local = local_name_bytes(&raw_name).to_vec();
-                match local.as_slice() {
+                let local = e.local_name();
+                match local.as_ref() {
                     b"package" => {
                         for attr in e.attributes().with_checks(false).flatten() {
                             if attr.key.as_ref() == b"version" {
@@ -173,8 +176,8 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                     b"manifest" => section = Section::Manifest,
                     b"spine" => section = Section::Spine,
                     _ => {
-                        if section == Section::Metadata && is_dc_element(&raw_name) {
-                            if let Ok(s) = std::str::from_utf8(&local) {
+                        if section == Section::Metadata && is_dc_namespace(&ns) {
+                            if let Ok(s) = std::str::from_utf8(local.as_ref()) {
                                 current_dc = Some(s.to_string());
                                 current_text.clear();
                             }
@@ -253,13 +256,12 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                 }
             }
             Event::End(ref e) => {
-                let raw_name = e.name().into_inner().to_vec();
-                let local = local_name_bytes(&raw_name).to_vec();
-                match local.as_slice() {
+                let local = e.local_name();
+                match local.as_ref() {
                     b"metadata" | b"manifest" | b"spine" => section = Section::None,
                     _ => {
-                        if section == Section::Metadata && is_dc_element(&raw_name) {
-                            if let Ok(dc_name) = std::str::from_utf8(&local) {
+                        if section == Section::Metadata && is_dc_namespace(&ns) {
+                            if let Ok(dc_name) = std::str::from_utf8(local.as_ref()) {
                                 if current_dc.as_deref() == Some(dc_name) {
                                     let value = std::mem::take(&mut current_text);
                                     assign_dc(&mut extras, dc_name, value);
@@ -350,13 +352,26 @@ fn assign_dc(extras: &mut OpfExtras, name: &str, value: String) {
     }
 }
 
-/// Returns true when `raw_name` is an element belonging to the Dublin Core
-/// Metadata Element Set — i.e. one with the `dc:` prefix when OPFs use the
-/// conventional `xmlns:dc="http://purl.org/dc/elements/1.1/"` namespace.
-/// Bare element names without a prefix (like `<meta>`) are excluded so we
-/// don't round-trip them back out as `<dc:meta>`.
-fn is_dc_element(raw_name: &[u8]) -> bool {
-    raw_name.starts_with(b"dc:") || raw_name.starts_with(b"DC:")
+/// The Dublin Core Metadata Element Set namespace. OPF metadata elements
+/// (`title`, `creator`, `language`, …) belong here.
+const DC_NS: &[u8] = b"http://purl.org/dc/elements/1.1/";
+
+/// Returns true when an element belongs to the Dublin Core namespace, matched by
+/// its *resolved namespace URI* rather than a hard-coded prefix — so DC elements
+/// are recognised under any prefix bound to the DC namespace (or a
+/// default-namespace binding), not only the conventional `dc:`. Elements with no
+/// namespace (a bare `<meta>`, say) are excluded so we don't round-trip them back
+/// out as `<dc:meta>`.
+///
+/// Fallback: if the element carries a prefix that was never declared (malformed,
+/// but seen in real-world EPUBs), treat a literal `dc`/`DC` prefix as Dublin Core
+/// so we don't silently drop metadata.
+fn is_dc_namespace(ns: &ResolveResult) -> bool {
+    match ns {
+        ResolveResult::Bound(namespace) => namespace.0 == DC_NS,
+        ResolveResult::Unknown(prefix) => prefix.eq_ignore_ascii_case(b"dc"),
+        ResolveResult::Unbound => false,
+    }
 }
 
 fn local_name<'a>(e: &'a quick_xml::events::BytesStart<'_>) -> &'a [u8] {

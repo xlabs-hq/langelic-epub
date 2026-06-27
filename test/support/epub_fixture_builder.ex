@@ -330,6 +330,59 @@ defmodule LangelicEpub.EpubFixtureBuilder do
     bytes
   end
 
+  @doc """
+  Build an EPUB 2 fixture whose Dublin Core metadata is bound to a **non-`dc`**
+  prefix (`dcmes`) pointing at the DC namespace URI, while the structural
+  elements use the default OPF namespace (unprefixed).
+
+  Exercises namespace-correct DC detection: a parser that keys off a literal
+  `dc:` prefix drops all of this metadata; one that resolves the namespace URI
+  recovers it.
+  """
+  @spec dc_alt_prefix_epub2(keyword()) :: binary()
+  def dc_alt_prefix_epub2(opts \\ []) do
+    title = Keyword.get(opts, :title, "Alternate DC Prefix")
+    language = Keyword.get(opts, :language, "fr")
+    identifier = Keyword.get(opts, :identifier, "urn:uuid:dc-alt-prefix")
+    creator = Keyword.get(opts, :creator, "Renée Descartes")
+
+    chapter_xhtml = ~s"""
+    <?xml version="1.0" encoding="UTF-8"?>
+    <html xmlns="http://www.w3.org/1999/xhtml">
+      <head><title>One</title></head>
+      <body><p>Body.</p></body>
+    </html>
+    """
+
+    opf_xml = ~s"""
+    <?xml version="1.0" encoding="UTF-8"?>
+    <package xmlns="http://www.idpf.org/2007/opf" xmlns:dcmes="http://purl.org/dc/elements/1.1/" version="2.0" unique-identifier="book-id">
+      <metadata>
+        <dcmes:identifier id="book-id">#{escape(identifier)}</dcmes:identifier>
+        <dcmes:title>#{escape(title)}</dcmes:title>
+        <dcmes:language>#{escape(language)}</dcmes:language>
+        <dcmes:creator>#{escape(creator)}</dcmes:creator>
+      </metadata>
+      <manifest>
+        <item id="chapter-one" href="text/chapter1.xhtml" media-type="application/xhtml+xml"/>
+      </manifest>
+      <spine>
+        <itemref idref="chapter-one"/>
+      </spine>
+    </package>
+    """
+
+    entries = [
+      {~c"mimetype", "application/epub+zip"},
+      {~c"META-INF/container.xml", String.trim_leading(@container_xml)},
+      {~c"OEBPS/content.opf", opf_xml},
+      {~c"OEBPS/text/chapter1.xhtml", chapter_xhtml}
+    ]
+
+    {:ok, {_name, bytes}} = :zip.create(~c"dc-alt-prefix.epub", entries, [:memory])
+    bytes
+  end
+
   defp escape(s) do
     s
     |> String.replace("&", "&amp;")

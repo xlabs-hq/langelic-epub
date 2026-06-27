@@ -86,6 +86,21 @@ defmodule LangelicEpubTest do
     end
   end
 
+  describe "parse/1 with Dublin Core under a non-standard prefix" do
+    test "resolves DC metadata by namespace URI, not the literal dc: prefix" do
+      bytes = EpubFixtureBuilder.dc_alt_prefix_epub2()
+
+      assert {:ok, %Document{} = doc} = LangelicEpub.parse(bytes)
+
+      # The OPF binds the DC namespace to `dcmes:`, not `dc:`. Namespace-aware
+      # parsing recovers every field; a prefix-matching parser would drop them.
+      assert doc.title == "Alternate DC Prefix"
+      assert doc.language == "fr"
+      assert doc.identifier == "urn:uuid:dc-alt-prefix"
+      assert doc.creators == ["Renée Descartes"]
+    end
+  end
+
   describe "parse/1 cover_asset_id" do
     test "normalizes EPUB 2 path-form cover meta to the manifest id" do
       bytes = EpubFixtureBuilder.cover_meta_epub2(cover_meta: "images/cover.png")
