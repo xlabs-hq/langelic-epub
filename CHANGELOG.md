@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `LangelicEpub.Error` may now have `kind: :invalid_mimetype` when the
   `mimetype` zip entry is missing or its content (after trimming a
   UTF-8 BOM and whitespace) is not `application/epub+zip`.
+- OTP 29 support: `rustler` 0.38 builds against OTP 29's NIF interface, and CI
+  now tests on OTP 29 / Elixir 1.20 in addition to OTP 26/27. The precompiled
+  NIF 2.16 artifact forward-loads on OTP 29's newer NIF ABI, so no new artifact
+  is shipped (a 2.17 artifact would needlessly drop OTP 26 compatibility).
 
 ### Fixed
 

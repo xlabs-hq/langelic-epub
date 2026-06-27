@@ -22,8 +22,9 @@ end
 
 Precompiled NIFs are published for macOS (aarch64, x86_64) and Linux
 (aarch64-gnu, x86_64-gnu, x86_64-musl). Users on those platforms do not need
-a Rust toolchain. Users on other platforms can build from source — see
-[Building from source](#building-from-source).
+a Rust toolchain. The artifacts target NIF ABI 2.16, which loads on current
+OTP releases (tested through OTP 29). Users on other platforms can build from
+source — see [Building from source](#building-from-source).
 
 ## Quick start
 

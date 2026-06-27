@@ -23,6 +23,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Newest supported: OTP 29 needs Elixir 1.20+. Exercises the rustler
+          # 0.38 OTP-29 enif path. The shipped NIF 2.16 artifact forward-loads
+          # on OTP 29's newer NIF ABI, so precompiled users are covered too.
+          - os: ubuntu-latest
+            otp: "29"
+            elixir: "1.20"
           - os: ubuntu-latest
             otp: "27"
             elixir: "1.17"
