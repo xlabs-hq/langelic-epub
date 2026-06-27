@@ -1,6 +1,10 @@
 defmodule LangelicEpub.MixProject do
   use Mix.Project
 
+  # Do not hand-edit. The release script (`scripts/release.exs`, via `just
+  # release`) bumps this line, native/langelic_epub/Cargo.toml, and the CHANGELOG
+  # together; editing it by hand desyncs them (bin/check_versions gates this) and
+  # the precompiled-NIF release dance (see UPDATE_PROCEDURE.md).
   @version "0.1.0"
   @source_url "https://github.com/xlabs-hq/langelic-epub"
 
