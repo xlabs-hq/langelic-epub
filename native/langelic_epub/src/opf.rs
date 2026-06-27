@@ -8,6 +8,7 @@
 use crate::error::AppError;
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use quick_xml::XmlVersion;
 use std::collections::HashMap;
 use std::io::{Cursor, Read};
 
@@ -112,7 +113,7 @@ fn find_opf_path(container_xml: &str) -> Result<String, AppError> {
                 for attr in e.attributes().with_checks(false).flatten() {
                     if attr.key.as_ref() == b"full-path" {
                         let v = attr
-                            .unescape_value()
+                            .normalized_value(XmlVersion::Implicit1_0)
                             .map_err(|err| AppError::MalformedOpf(err.to_string()))?;
                         return Ok(v.into_owned());
                     }
@@ -162,7 +163,7 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                     b"package" => {
                         for attr in e.attributes().with_checks(false).flatten() {
                             if attr.key.as_ref() == b"version" {
-                                if let Ok(v) = attr.unescape_value() {
+                                if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                     extras.version = Some(v.into_owned());
                                 }
                             }
@@ -192,12 +193,16 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                             for attr in e.attributes().with_checks(false).flatten() {
                                 match attr.key.as_ref() {
                                     b"name" => {
-                                        meta_name =
-                                            attr.unescape_value().ok().map(|c| c.into_owned())
+                                        meta_name = attr
+                                            .normalized_value(XmlVersion::Implicit1_0)
+                                            .ok()
+                                            .map(|c| c.into_owned())
                                     }
                                     b"content" => {
-                                        meta_content =
-                                            attr.unescape_value().ok().map(|c| c.into_owned())
+                                        meta_content = attr
+                                            .normalized_value(XmlVersion::Implicit1_0)
+                                            .ok()
+                                            .map(|c| c.into_owned())
                                     }
                                     _ => {}
                                 }
@@ -227,7 +232,7 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                         if name == b"itemref" {
                             for attr in e.attributes().with_checks(false).flatten() {
                                 if attr.key.as_ref() == b"idref" {
-                                    if let Ok(v) = attr.unescape_value() {
+                                    if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                                         extras.spine.push(v.into_owned());
                                     }
                                 }
@@ -283,7 +288,7 @@ fn parse_manifest_item(
     let mut properties = None;
     for attr in e.attributes().with_checks(false).flatten() {
         let value = attr
-            .unescape_value()
+            .normalized_value(XmlVersion::Implicit1_0)
             .map_err(|err| AppError::MalformedOpf(err.to_string()))?
             .into_owned();
         match attr.key.as_ref() {

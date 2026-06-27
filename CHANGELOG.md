@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Dependency updates: `rustler` 0.37 → 0.38 (Elixir + crate), `zip` 7 → 8,
+  `quick-xml` 0.39 → 0.40, plus `uuid`, `credo`, and `ex_doc` bumps. The
+  quick-xml `Attribute::unescape_value` API was deprecated; migrated to
+  `normalized_value(XmlVersion::Implicit1_0)`, which is behavior-identical
+  (same XML 1.0 implicit version, depth, and predefined-entity resolver). No
+  user-facing API change.
 - Reader no longer depends on the `iepub` crate. All structural data
   (manifest, spine, metadata, cover, TOC) now comes from a pure
   `zip` + `quick_xml` stack. This removes a large transitive dependency

@@ -10,6 +10,7 @@ use crate::opf::{ManifestItem, OpfExtras};
 use crate::types::NavItem;
 use quick_xml::events::Event;
 use quick_xml::Reader as XmlReader;
+use quick_xml::XmlVersion;
 use std::io::{Cursor, Read};
 
 pub fn build(
@@ -261,7 +262,7 @@ fn is_toc_nav(e: &quick_xml::events::BytesStart<'_>) -> bool {
     for attr in e.attributes().with_checks(false).flatten() {
         let key = attr.key.as_ref();
         if local_name(key) == b"type" {
-            if let Ok(v) = attr.unescape_value() {
+            if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                 if v.split_whitespace().any(|p| p == "toc") {
                     return true;
                 }
@@ -274,7 +275,7 @@ fn is_toc_nav(e: &quick_xml::events::BytesStart<'_>) -> bool {
 fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &[u8]) -> Option<String> {
     for attr in e.attributes().with_checks(false).flatten() {
         if attr.key.as_ref() == name {
-            if let Ok(v) = attr.unescape_value() {
+            if let Ok(v) = attr.normalized_value(XmlVersion::Implicit1_0) {
                 return Some(v.into_owned());
             }
         }
