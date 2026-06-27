@@ -23,7 +23,7 @@ nif_version_2_17 = ["rustler/nif_version_2_17"]
 rustler = "0.37"
 epub-builder = "0.8.3"
 quick-xml = "0.39"
-zip = "7"
+zip = "8"
 thiserror = "2"
 uuid = { version = "1", features = ["v4", "v5"] }
 
