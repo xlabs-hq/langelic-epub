@@ -250,16 +250,19 @@ fn identifier_to_uuid(identifier: &str) -> Uuid {
 ///   * set (or strip) the `<spine>` `page-progression-direction` attribute to
 ///     match `doc.page_progression_direction`.
 ///
-/// And, when the direction is `"rtl"`, rewrite the generated `nav.xhtml` so its
-/// root `<html>` carries `dir="rtl"` and the document language — epub-builder's
-/// nav template emits neither, so RTL TOC labels would otherwise render LTR.
+/// The generated `nav.xhtml` is also rewritten:
+///   * an empty `<nav epub:type="landmarks">` wrapper is stripped (epubcheck
+///     RSC-005 otherwise);
+///   * when the direction is `"rtl"`, the root `<html>` gains `dir="rtl"` and
+///     the document language — epub-builder's nav template emits neither, so
+///     RTL TOC labels would otherwise render LTR.
 fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
     let cursor = Cursor::new(&epub_bytes);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| AppError::Io(format!("reopen: {}", e)))?;
 
     let opf_path = find_opf_path_in_archive(&mut archive)?;
-    // epub-builder writes nav.xhtml next to content.opf. Only rewrite it for RTL.
+    // epub-builder writes nav.xhtml next to content.opf.
     let nav_rtl = doc.page_progression_direction.as_deref() == Some("rtl");
     let nav_path = format!("{}nav.xhtml", dir_of(&opf_path));
 
@@ -268,7 +271,7 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
         let mut writer = zip::ZipWriter::new(Cursor::new(&mut out));
 
         // mimetype is stored; other files use epub-builder's defaults. We
-        // deflate any entry we rewrite (OPF, and nav.xhtml on the RTL path).
+        // deflate any entry we rewrite (OPF and nav.xhtml).
         let deflated: zip::write::FileOptions<()> =
             zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
@@ -291,12 +294,14 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
                 writer
                     .write_all(patched.as_bytes())
                     .map_err(|e| AppError::Io(format!("write opf: {}", e)))?;
-            } else if nav_rtl && name == nav_path {
+            } else if name == nav_path {
                 let original = read_entry(&mut archive, &name)?;
                 let original_str = String::from_utf8(original)
                     .map_err(|_| AppError::Io("nav not utf-8".to_string()))?;
-                let patched =
-                    add_dir_and_lang_to_html(&original_str, "rtl", doc.language.as_deref());
+                let mut patched = strip_empty_landmarks_nav(&original_str);
+                if nav_rtl {
+                    patched = add_dir_and_lang_to_html(&patched, "rtl", doc.language.as_deref());
+                }
 
                 writer
                     .start_file(&name, deflated)
@@ -455,6 +460,67 @@ fn remove_attr(attrs: &str, name: &str) -> String {
     out.push_str(&attrs[..keep_end]);
     out.push_str(&attrs[end..]);
     out
+}
+
+/// Remove an **empty** `<nav epub:type="landmarks">` element from the
+/// generated nav.xhtml.
+///
+/// epub-builder's v3 nav template unconditionally emits the landmarks wrapper,
+/// even when there are no landmark entries; an empty landmarks nav fails
+/// epubcheck RSC-005 ("element \"nav\" incomplete; missing required element
+/// \"ol\""). We only remove a wrapper with no `<li>` entries inside — if
+/// epub-builder ever emits real landmarks, they are kept verbatim.
+fn strip_empty_landmarks_nav(xhtml: &str) -> String {
+    let mut result = xhtml.to_string();
+    let mut search_from = 0;
+
+    while let Some(rel) = result[search_from..].find("<nav") {
+        let start = search_from + rel;
+        let Some(tag_rel_end) = result[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + tag_rel_end + 1;
+
+        if !result[start..tag_end].contains("landmarks") {
+            search_from = tag_end;
+            continue;
+        }
+
+        // Landmarks navs contain only an <ol> of <li> links, never a nested
+        // <nav>, so the next closing tag ends this element.
+        let Some(close_rel) = result[tag_end..].find("</nav>") else {
+            break;
+        };
+        let close_end = tag_end + close_rel + "</nav>".len();
+
+        if result[tag_end..tag_end + close_rel].contains("<li") {
+            // Real landmark entries — keep the element.
+            search_from = close_end;
+            continue;
+        }
+
+        // Remove the element, plus its own-line indentation and trailing
+        // newline, so no blank line is left behind.
+        let line_start = result[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let removal_start = if result[line_start..start]
+            .chars()
+            .all(|c| c == ' ' || c == '\t')
+        {
+            line_start
+        } else {
+            start
+        };
+        let removal_end = if result[close_end..].starts_with('\n') {
+            close_end + 1
+        } else {
+            close_end
+        };
+
+        result.replace_range(removal_start..removal_end, "");
+        search_from = removal_start;
+    }
+
+    result
 }
 
 /// Inject `dir` and the document language onto the root `<html>` element of an
