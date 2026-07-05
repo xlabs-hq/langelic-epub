@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-05
+
 ## [0.2.0] - 2026-07-05
 
 ### Added
@@ -101,7 +103,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and
   `x86_64-unknown-linux-musl`.
 
-[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/xlabs-hq/langelic-epub/releases/tag/v0.1.0
