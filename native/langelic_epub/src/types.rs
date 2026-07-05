@@ -68,6 +68,12 @@ pub struct Document {
     pub toc: Vec<NavItem>,
     pub cover_asset_id: Option<String>,
     pub version: String,
+    /// Spine page-progression-direction: `Some("rtl")`, `Some("ltr")`, or
+    /// `None` (omit the attribute). Any other value is rejected at build time
+    /// with `ErrorKind::InvalidPageDirection`. Set from the TARGET language at
+    /// build time; deliberately never populated on the read side (see
+    /// `reader.rs`).
+    pub page_progression_direction: Option<String>,
 }
 
 #[derive(NifUnitEnum, Debug, Clone, Copy)]
@@ -82,5 +88,6 @@ pub enum ErrorKind {
     InvalidChapter,
     MissingRequiredField,
     DuplicateId,
+    InvalidPageDirection,
     Panic,
 }

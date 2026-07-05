@@ -174,6 +174,12 @@ pub fn parse_extras(opf_bytes: &[u8], opf_path: &str) -> Result<OpfExtras, AppEr
                     }
                     b"metadata" => section = Section::Metadata,
                     b"manifest" => section = Section::Manifest,
+                    // We read the spine's <itemref> order below but deliberately
+                    // ignore the <spine> element's `page-progression-direction`
+                    // attribute: direction is derived from the TARGET language at
+                    // build time, never round-tripped from the source (a ja=rtl
+                    // source rebuilt as en must not inherit rtl). RTL-source
+                    // capture is intentionally future-fenced.
                     b"spine" => section = Section::Spine,
                     _ => {
                         if section == Section::Metadata && is_dc_namespace(&ns) {

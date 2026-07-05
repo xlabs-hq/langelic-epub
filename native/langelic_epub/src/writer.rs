@@ -15,6 +15,13 @@
 //! `rights`, and the original `identifier` string, we post-process the
 //! generated EPUB: open the zip, rewrite the OPF, re-zip. The post-process
 //! step is a pure string edit — no re-parsing of the OPF XML tree.
+//!
+//! The same post-process pass owns page-progression-direction: epub-builder
+//! always writes `page-progression-direction="ltr"` on the spine and never
+//! sets `dir`/`lang` on the nav's `<html>` root, so we rewrite the spine
+//! attribute to match the document (or strip it when unspecified) and, for
+//! RTL, orient nav.xhtml. See `set_spine_direction` and
+//! `add_dir_and_lang_to_html`.
 
 use crate::error::AppError;
 use crate::types::{Chapter, Document, NavItem};
@@ -123,6 +130,12 @@ fn validate(doc: &Document) -> Result<(), AppError> {
     match doc.language.as_deref() {
         None | Some("") => return Err(AppError::MissingRequiredField("language")),
         _ => {}
+    }
+    // Fail loud on an unrecognised direction rather than silently dropping it —
+    // a bad direction is the exact bug this feature exists to prevent.
+    match doc.page_progression_direction.as_deref() {
+        None | Some("rtl") | Some("ltr") => {}
+        Some(other) => return Err(AppError::InvalidPageDirection(other.to_string())),
     }
 
     let mut ids: HashSet<&str> = HashSet::new();
@@ -233,17 +246,31 @@ fn identifier_to_uuid(identifier: &str) -> Uuid {
 ///   * replace epub-builder's urn:uuid identifier with the original identifier
 ///     (so round-trips preserve the identifier exactly);
 ///   * inject `<dc:publisher>`, `<dc:date>`, `<dc:rights>`, and any custom
-///     DC elements from the document's `metadata` map.
+///     DC elements from the document's `metadata` map;
+///   * set (or strip) the `<spine>` `page-progression-direction` attribute to
+///     match `doc.page_progression_direction`.
+///
+/// And, when the direction is `"rtl"`, rewrite the generated `nav.xhtml` so its
+/// root `<html>` carries `dir="rtl"` and the document language — epub-builder's
+/// nav template emits neither, so RTL TOC labels would otherwise render LTR.
 fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
     let cursor = Cursor::new(&epub_bytes);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| AppError::Io(format!("reopen: {}", e)))?;
 
     let opf_path = find_opf_path_in_archive(&mut archive)?;
+    // epub-builder writes nav.xhtml next to content.opf. Only rewrite it for RTL.
+    let nav_rtl = doc.page_progression_direction.as_deref() == Some("rtl");
+    let nav_path = format!("{}nav.xhtml", dir_of(&opf_path));
 
     let mut out = Vec::with_capacity(epub_bytes.len());
     {
         let mut writer = zip::ZipWriter::new(Cursor::new(&mut out));
+
+        // mimetype is stored; other files use epub-builder's defaults. We
+        // deflate any entry we rewrite (OPF, and nav.xhtml on the RTL path).
+        let deflated: zip::write::FileOptions<()> =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
         for i in 0..archive.len() {
             let file = archive
@@ -258,16 +285,25 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
                     .map_err(|_| AppError::Io("opf not utf-8".to_string()))?;
                 let patched = rewrite_opf_metadata(&original_str, doc);
 
-                // mimetype is stored; other files use epub-builder's defaults.
-                // We use deflated for the OPF.
-                let options: zip::write::FileOptions<()> = zip::write::FileOptions::default()
-                    .compression_method(zip::CompressionMethod::Deflated);
                 writer
-                    .start_file(&name, options)
+                    .start_file(&name, deflated)
                     .map_err(|e| AppError::Io(format!("start_file opf: {}", e)))?;
                 writer
                     .write_all(patched.as_bytes())
                     .map_err(|e| AppError::Io(format!("write opf: {}", e)))?;
+            } else if nav_rtl && name == nav_path {
+                let original = read_entry(&mut archive, &name)?;
+                let original_str = String::from_utf8(original)
+                    .map_err(|_| AppError::Io("nav not utf-8".to_string()))?;
+                let patched =
+                    add_dir_and_lang_to_html(&original_str, "rtl", doc.language.as_deref());
+
+                writer
+                    .start_file(&name, deflated)
+                    .map_err(|e| AppError::Io(format!("start_file nav: {}", e)))?;
+                writer
+                    .write_all(patched.as_bytes())
+                    .map_err(|e| AppError::Io(format!("write nav: {}", e)))?;
             } else {
                 let file = archive
                     .by_name(&name)
@@ -284,6 +320,14 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
     }
 
     Ok(out)
+}
+
+/// Directory portion of an archive path (e.g. `"OEBPS/content.opf"` → `"OEBPS/"`).
+fn dir_of(path: &str) -> String {
+    match path.rfind('/') {
+        Some(idx) => path[..=idx].to_string(),
+        None => String::new(),
+    }
 }
 
 fn find_opf_path_in_archive(
@@ -346,6 +390,107 @@ fn rewrite_opf_metadata(opf: &str, doc: &Document) -> String {
     //    IDs as errors. Rename the language id to `epub-lang-N`.
     result = fix_language_id_collision(&result);
 
+    // 4. Set (or strip) the spine's page-progression-direction. epub-builder
+    //    unconditionally emits `page-progression-direction="ltr"`; we replace
+    //    it with the requested value, or drop the attribute entirely when the
+    //    document leaves direction unspecified (nil), so an omitted direction
+    //    reads as "reader default" rather than a hard-coded ltr.
+    result = set_spine_direction(&result, doc);
+
+    result
+}
+
+/// Rewrite the `<spine>` opening tag's `page-progression-direction`:
+///   * strip whatever epub-builder emitted (always `ltr`);
+///   * re-add the attribute iff `doc.page_progression_direction` is set.
+///
+/// Robust to any other attributes epub-builder puts on `<spine>` (e.g.
+/// `toc="ncx"`), which are preserved untouched.
+fn set_spine_direction(opf: &str, doc: &Document) -> String {
+    let Some(spine_pos) = opf.find("<spine") else {
+        return opf.to_string();
+    };
+    let attrs_start = spine_pos + "<spine".len();
+    let Some(rel_end) = opf[attrs_start..].find('>') else {
+        return opf.to_string();
+    };
+    let tag_end = attrs_start + rel_end; // index of the closing '>'
+    let attrs = &opf[attrs_start..tag_end];
+
+    let mut new_attrs = remove_attr(attrs, "page-progression-direction");
+    // Normalise trailing whitespace left by the removal (or by epub-builder).
+    while new_attrs.ends_with(char::is_whitespace) {
+        new_attrs.pop();
+    }
+    if let Some(dir) = doc.page_progression_direction.as_deref() {
+        new_attrs.push_str(&format!(" page-progression-direction=\"{}\"", dir));
+    }
+
+    let mut result = String::with_capacity(opf.len());
+    result.push_str(&opf[..attrs_start]);
+    result.push_str(&new_attrs);
+    result.push_str(&opf[tag_end..]);
+    result
+}
+
+/// Remove a `name="..."` attribute (and one run of leading whitespace) from an
+/// element's attribute string. Returns the input unchanged if the attribute is
+/// absent or unterminated.
+fn remove_attr(attrs: &str, name: &str) -> String {
+    let needle = format!("{}=\"", name);
+    let Some(pos) = attrs.find(&needle) else {
+        return attrs.to_string();
+    };
+    let val_start = pos + needle.len();
+    let Some(rel_q) = attrs[val_start..].find('"') else {
+        return attrs.to_string();
+    };
+    let end = val_start + rel_q + 1; // just past the closing quote
+
+    // Drop leading whitespace immediately before the attribute so we don't
+    // leave a double space.
+    let keep_end = attrs[..pos].trim_end().len();
+
+    let mut out = String::with_capacity(attrs.len());
+    out.push_str(&attrs[..keep_end]);
+    out.push_str(&attrs[end..]);
+    out
+}
+
+/// Inject `dir` and the document language onto the root `<html>` element of an
+/// XHTML string (used to orient the generated nav.xhtml for RTL books).
+/// Existing `dir`/`lang` attributes are left untouched.
+fn add_dir_and_lang_to_html(xhtml: &str, dir: &str, lang: Option<&str>) -> String {
+    let Some(html_pos) = xhtml.find("<html") else {
+        return xhtml.to_string();
+    };
+    let attrs_start = html_pos + "<html".len();
+    let Some(rel_end) = xhtml[attrs_start..].find('>') else {
+        return xhtml.to_string();
+    };
+    let tag_end = attrs_start + rel_end;
+    let existing = &xhtml[attrs_start..tag_end];
+
+    let mut inject = String::new();
+    if !existing.contains(" dir=") {
+        inject.push_str(&format!(" dir=\"{}\"", xml_escape(dir)));
+    }
+    if let Some(l) = lang {
+        if !existing.contains("xml:lang=") {
+            inject.push_str(&format!(" xml:lang=\"{}\"", xml_escape(l)));
+        }
+        if !existing.contains(" lang=") {
+            inject.push_str(&format!(" lang=\"{}\"", xml_escape(l)));
+        }
+    }
+    if inject.is_empty() {
+        return xhtml.to_string();
+    }
+
+    let mut result = String::with_capacity(xhtml.len() + inject.len());
+    result.push_str(&xhtml[..attrs_start]);
+    result.push_str(&inject);
+    result.push_str(&xhtml[attrs_start..]);
     result
 }
 
