@@ -132,5 +132,21 @@ defmodule LangelicEpub.BuildTest do
       # EPUB files are zip archives; the first two bytes are "PK".
       assert <<"PK", _::binary>> = bytes
     end
+
+    test "generated nav.xhtml carries no empty landmarks nav" do
+      assert {:ok, bytes} = LangelicEpub.build(base_doc())
+
+      {:ok, handle} = :zip.zip_open(bytes, [:memory])
+      {:ok, {_, nav}} = :zip.zip_get(~c"OEBPS/nav.xhtml", handle)
+      :zip.zip_close(handle)
+      nav = to_string(nav)
+
+      # epub-builder always emits an empty <nav epub:type="landmarks"> wrapper,
+      # which fails epubcheck RSC-005; the writer's post-processing must strip
+      # it. The toc nav (which has entries) must survive.
+      refute nav =~ "landmarks"
+      assert nav =~ ~s|epub:type = "toc"|
+      assert nav =~ "<li>"
+    end
   end
 end
