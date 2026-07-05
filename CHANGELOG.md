@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-05
+
+### Added
+
+- `LangelicEpub.Document` gains a `page_progression_direction` field
+  (`"rtl"`, `"ltr"`, or `nil`). When set, `build/1` writes the OPF
+  `<spine page-progression-direction>` attribute so right-to-left target
+  languages (Arabic, Hebrew, …) paginate correctly in real readers. For
+  `"rtl"`, the generated `nav.xhtml` root `<html>` also gets `dir="rtl"` and
+  the document language so table-of-contents labels render in the correct
+  direction.
+- `LangelicEpub.Error` may now have `kind: :invalid_page_direction` when
+  `page_progression_direction` is anything other than `"rtl"`, `"ltr"`, or
+  `nil`. The value is rejected at build time rather than silently dropped.
+
+### Changed
+
+- When `page_progression_direction` is `nil`, the built OPF now **omits** the
+  `<spine>` `page-progression-direction` attribute entirely. Previously the
+  underlying `epub-builder` unconditionally emitted
+  `page-progression-direction="ltr"`. An omitted direction is semantically
+  identical (readers default to `ltr`) but no longer hard-codes a direction
+  the caller never asked for. Existing `nil` builds change bytes but not
+  rendering.
+
+### Notes
+
+- The reader continues to **not** surface a source EPUB's spine direction:
+  `parse/1` always returns `page_progression_direction: nil`. Direction is a
+  build-time decision derived from the target language, never round-tripped
+  from the source (a `rtl` Japanese source rebuilt into English must shed it).
+
 ## [0.1.1] - 2026-06-27
 
 ### Changed
@@ -69,6 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and
   `x86_64-unknown-linux-musl`.
 
-[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/xlabs-hq/langelic-epub/releases/tag/v0.1.0
