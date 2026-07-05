@@ -31,6 +31,9 @@ pub enum AppError {
     #[error("duplicate id: {0}")]
     DuplicateId(String),
 
+    #[error("invalid page-progression-direction {0:?}: expected \"rtl\", \"ltr\", or nil")]
+    InvalidPageDirection(String),
+
     #[error("rust panic: {0}")]
     Panic(String),
 }
@@ -47,6 +50,7 @@ impl AppError {
             AppError::InvalidChapter(_, _) => ErrorKind::InvalidChapter,
             AppError::MissingRequiredField(_) => ErrorKind::MissingRequiredField,
             AppError::DuplicateId(_) => ErrorKind::DuplicateId,
+            AppError::InvalidPageDirection(_) => ErrorKind::InvalidPageDirection,
             AppError::Panic(_) => ErrorKind::Panic,
         }
     }

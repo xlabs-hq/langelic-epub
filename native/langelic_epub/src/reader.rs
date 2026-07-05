@@ -80,6 +80,12 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         toc,
         cover_asset_id,
         version: extras.version.clone().unwrap_or_default(),
+        // Deliberately not round-tripped from the source. Direction is a
+        // build-time decision derived from the TARGET language (see writer.rs
+        // and opf.rs). Echoing a source EPUB's page-progression-direction would
+        // be actively wrong: Japanese source EPUBs are frequently ppd="rtl" for
+        // vertical writing, and a ja→en rebuild must shed that.
+        page_progression_direction: None,
     })
 }
 

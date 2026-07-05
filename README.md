@@ -80,8 +80,37 @@ and inject DC elements epub-builder doesn't emit natively (`<dc:publisher>`,
 | Embedded images        | yes  | yes                               |
 | Embedded CSS           | yes  | yes                               |
 | Cover image            | yes  | yes                               |
+| Page progression (RTL) | not surfaced | yes (`page_progression_direction`) |
 | DRM-encrypted content  | detected, not decrypted | n/a    |
 | MOBI                   | no   | no                                |
+
+### Page progression direction
+
+Set `page_progression_direction` on the `Document` to control pagination flow
+for the built EPUB:
+
+```elixir
+%LangelicEpub.Document{
+  # ...
+  language: "ar",
+  page_progression_direction: "rtl"  # "rtl" | "ltr" | nil
+}
+```
+
+- `"rtl"` writes `<spine page-progression-direction="rtl">` and orients the
+  generated `nav.xhtml` (`<html dir="rtl" xml:lang="…" lang="…">`) so
+  table-of-contents labels in a right-to-left language render correctly.
+- `"ltr"` writes the attribute explicitly.
+- `nil` (default) omits the attribute; readers fall back to their default
+  (`ltr`).
+
+Any other value fails the build with
+`{:error, %LangelicEpub.Error{kind: :invalid_page_direction}}`.
+
+Direction is set from the **target** language at build time and is
+deliberately **not** round-tripped on read: `parse/1` always returns
+`page_progression_direction: nil`, so a `rtl` source EPUB rebuilt into a
+left-to-right language does not inherit the source's direction.
 
 ## Limitations and known issues
 
@@ -111,7 +140,8 @@ and inject DC elements epub-builder doesn't emit natively (`<dc:publisher>`,
 Every public function returns `{:ok, term} | {:error, %LangelicEpub.Error{}}`.
 The `:kind` field is a well-documented atom (`:invalid_zip`,
 `:missing_container`, `:malformed_opf`, `:io`, `:missing_required_field`,
-`:invalid_chapter`, `:duplicate_id`, `:panic`). The full list is in the
+`:invalid_chapter`, `:duplicate_id`, `:invalid_page_direction`, `:panic`).
+The full list is in the
 moduledoc of [`LangelicEpub.Error`](lib/langelic_epub/error.ex). Panics on
 the Rust side are caught and converted to `{:error, %Error{kind: :panic}}`
 so a malformed EPUB cannot crash the BEAM scheduler thread.

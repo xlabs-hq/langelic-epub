@@ -70,6 +70,8 @@ defmodule LangelicEpub do
     * `:missing_required_field` — title, identifier, or language is missing
     * `:invalid_chapter` — a chapter's `data` is not valid UTF-8 XHTML
     * `:duplicate_id` — two chapters or assets share the same `id`
+    * `:invalid_page_direction` — `page_progression_direction` is not `"rtl"`,
+      `"ltr"`, or `nil`
     * `:panic` — Rust side panicked (report a bug)
   """
   @spec build(Document.t()) :: {:ok, binary()} | {:error, Error.t()}
