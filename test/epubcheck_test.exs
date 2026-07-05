@@ -57,6 +57,31 @@ defmodule LangelicEpub.EpubcheckTest do
       {:ok, bytes} = LangelicEpub.build(doc)
       assert_no_epubcheck_errors(bytes, epubcheck)
     end
+
+    test "passes on an rtl-directed document", %{epubcheck: epubcheck} do
+      skip_if_missing!(epubcheck)
+
+      doc = %LangelicEpub.Document{
+        title: "كتاب",
+        language: "ar",
+        identifier: "urn:uuid:2c1b7e9a-3d4f-4a10-8b21-abcdef012345",
+        creators: ["مؤلف"],
+        page_progression_direction: "rtl",
+        spine: [
+          %LangelicEpub.Chapter{
+            id: "ch1",
+            file_name: "ch1.xhtml",
+            title: "الفصل الأول",
+            media_type: "application/xhtml+xml",
+            data:
+              ~s|<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ar" dir="rtl"><head><title>الفصل الأول</title></head><body><h1>الفصل الأول</h1><p>مرحبا.</p></body></html>|
+          }
+        ]
+      }
+
+      {:ok, bytes} = LangelicEpub.build(doc)
+      assert_no_epubcheck_errors(bytes, epubcheck)
+    end
   end
 
   defp skip_if_missing!(nil) do
