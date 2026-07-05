@@ -5,7 +5,7 @@ defmodule LangelicEpub.MixProject do
   # release`) bumps this line, native/langelic_epub/Cargo.toml, and the CHANGELOG
   # together; editing it by hand desyncs them (bin/check_versions gates this) and
   # the precompiled-NIF release dance (see UPDATE_PROCEDURE.md).
-  @version "0.2.1"
+  @version "0.2.2"
   @source_url "https://github.com/xlabs-hq/langelic-epub"
 
   def project do
