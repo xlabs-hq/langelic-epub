@@ -132,5 +132,68 @@ defmodule LangelicEpub.BuildTest do
       # EPUB files are zip archives; the first two bytes are "PK".
       assert <<"PK", _::binary>> = bytes
     end
+
+    test "generated nav.xhtml carries no empty landmarks nav" do
+      assert {:ok, bytes} = LangelicEpub.build(base_doc())
+
+      {:ok, handle} = :zip.zip_open(bytes, [:memory])
+      {:ok, {_, nav}} = :zip.zip_get(~c"OEBPS/nav.xhtml", handle)
+      :zip.zip_close(handle)
+      nav = to_string(nav)
+
+      # epub-builder always emits an empty <nav epub:type="landmarks"> wrapper,
+      # which fails epubcheck RSC-005; the writer's post-processing must strip
+      # it. The toc nav (which has entries) must survive.
+      refute nav =~ "landmarks"
+      assert nav =~ ~s|epub:type = "toc"|
+      assert nav =~ "<li>"
+    end
+
+    test "NCX playOrder is sequential and duplicate targets share one value" do
+      # Reproduce the real-book shape that used to trip epubcheck RSC-005
+      # ("different playOrder values ... refer to same target"): the same file
+      # appears in the TOC both as a nested child and as a top-level entry.
+      chapter = fn id, file ->
+        %Chapter{
+          id: id,
+          file_name: file,
+          media_type: "application/xhtml+xml",
+          data:
+            ~s|<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>#{id}</title></head><body><p>x</p></body></html>|
+        }
+      end
+
+      doc = %Document{
+        title: "PlayOrder",
+        identifier: "urn:uuid:playorder-test",
+        language: "en",
+        creators: ["Tester"],
+        spine: [chapter.("ch1", "ch1.xhtml"), chapter.("ch2", "ch2.xhtml")],
+        toc: [
+          %LangelicEpub.NavItem{
+            title: "One",
+            href: "ch1.xhtml",
+            children: [
+              %LangelicEpub.NavItem{title: "Nested Two", href: "ch2.xhtml", children: []}
+            ]
+          },
+          %LangelicEpub.NavItem{title: "Two", href: "ch2.xhtml", children: []}
+        ]
+      }
+
+      assert {:ok, bytes} = LangelicEpub.build(doc)
+
+      {:ok, handle} = :zip.zip_open(bytes, [:memory])
+      {:ok, {_, ncx}} = :zip.zip_get(~c"OEBPS/toc.ncx", handle)
+      :zip.zip_close(handle)
+      ncx = to_string(ncx)
+
+      orders = Regex.scan(~r/playOrder="(\d+)"/, ncx, capture: :all_but_first)
+      srcs = Regex.scan(~r/<content src="([^"]+)"/, ncx, capture: :all_but_first)
+      pairs = Enum.zip(List.flatten(srcs), List.flatten(orders))
+
+      # ch1 first (1), ch2 nested (2), ch2 top-level reuses 2 — never a fresh 3.
+      assert pairs == [{"ch1.xhtml", "1"}, {"ch2.xhtml", "2"}, {"ch2.xhtml", "2"}]
+    end
   end
 end

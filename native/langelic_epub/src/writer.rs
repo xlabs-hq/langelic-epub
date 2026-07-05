@@ -250,25 +250,32 @@ fn identifier_to_uuid(identifier: &str) -> Uuid {
 ///   * set (or strip) the `<spine>` `page-progression-direction` attribute to
 ///     match `doc.page_progression_direction`.
 ///
-/// And, when the direction is `"rtl"`, rewrite the generated `nav.xhtml` so its
-/// root `<html>` carries `dir="rtl"` and the document language — epub-builder's
-/// nav template emits neither, so RTL TOC labels would otherwise render LTR.
+/// The generated `nav.xhtml` is also rewritten:
+///   * an empty `<nav epub:type="landmarks">` wrapper is stripped (epubcheck
+///     RSC-005 otherwise);
+///   * when the direction is `"rtl"`, the root `<html>` gains `dir="rtl"` and
+///     the document language — epub-builder's nav template emits neither, so
+///     RTL TOC labels would otherwise render LTR.
+///
+/// And the generated `toc.ncx` has its `playOrder` values renumbered — see
+/// `renumber_ncx_play_order`.
 fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
     let cursor = Cursor::new(&epub_bytes);
     let mut archive =
         zip::ZipArchive::new(cursor).map_err(|e| AppError::Io(format!("reopen: {}", e)))?;
 
     let opf_path = find_opf_path_in_archive(&mut archive)?;
-    // epub-builder writes nav.xhtml next to content.opf. Only rewrite it for RTL.
+    // epub-builder writes nav.xhtml and toc.ncx next to content.opf.
     let nav_rtl = doc.page_progression_direction.as_deref() == Some("rtl");
     let nav_path = format!("{}nav.xhtml", dir_of(&opf_path));
+    let ncx_path = format!("{}toc.ncx", dir_of(&opf_path));
 
     let mut out = Vec::with_capacity(epub_bytes.len());
     {
         let mut writer = zip::ZipWriter::new(Cursor::new(&mut out));
 
         // mimetype is stored; other files use epub-builder's defaults. We
-        // deflate any entry we rewrite (OPF, and nav.xhtml on the RTL path).
+        // deflate any entry we rewrite (OPF, nav.xhtml, and toc.ncx).
         let deflated: zip::write::FileOptions<()> =
             zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
@@ -291,12 +298,14 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
                 writer
                     .write_all(patched.as_bytes())
                     .map_err(|e| AppError::Io(format!("write opf: {}", e)))?;
-            } else if nav_rtl && name == nav_path {
+            } else if name == nav_path {
                 let original = read_entry(&mut archive, &name)?;
                 let original_str = String::from_utf8(original)
                     .map_err(|_| AppError::Io("nav not utf-8".to_string()))?;
-                let patched =
-                    add_dir_and_lang_to_html(&original_str, "rtl", doc.language.as_deref());
+                let mut patched = strip_empty_landmarks_nav(&original_str);
+                if nav_rtl {
+                    patched = add_dir_and_lang_to_html(&patched, "rtl", doc.language.as_deref());
+                }
 
                 writer
                     .start_file(&name, deflated)
@@ -304,6 +313,18 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
                 writer
                     .write_all(patched.as_bytes())
                     .map_err(|e| AppError::Io(format!("write nav: {}", e)))?;
+            } else if name == ncx_path {
+                let original = read_entry(&mut archive, &name)?;
+                let original_str = String::from_utf8(original)
+                    .map_err(|_| AppError::Io("ncx not utf-8".to_string()))?;
+                let patched = renumber_ncx_play_order(&original_str);
+
+                writer
+                    .start_file(&name, deflated)
+                    .map_err(|e| AppError::Io(format!("start_file ncx: {}", e)))?;
+                writer
+                    .write_all(patched.as_bytes())
+                    .map_err(|e| AppError::Io(format!("write ncx: {}", e)))?;
             } else {
                 let file = archive
                     .by_name(&name)
@@ -455,6 +476,163 @@ fn remove_attr(attrs: &str, name: &str) -> String {
     out.push_str(&attrs[..keep_end]);
     out.push_str(&attrs[end..]);
     out
+}
+
+/// Remove an **empty** `<nav epub:type="landmarks">` element from the
+/// generated nav.xhtml.
+///
+/// epub-builder's v3 nav template unconditionally emits the landmarks wrapper,
+/// even when there are no landmark entries; an empty landmarks nav fails
+/// epubcheck RSC-005 ("element \"nav\" incomplete; missing required element
+/// \"ol\""). We only remove a wrapper with no `<li>` entries inside — if
+/// epub-builder ever emits real landmarks, they are kept verbatim.
+fn strip_empty_landmarks_nav(xhtml: &str) -> String {
+    let mut result = xhtml.to_string();
+    let mut search_from = 0;
+
+    while let Some(rel) = result[search_from..].find("<nav") {
+        let start = search_from + rel;
+        let Some(tag_rel_end) = result[start..].find('>') else {
+            break;
+        };
+        let tag_end = start + tag_rel_end + 1;
+
+        if !result[start..tag_end].contains("landmarks") {
+            search_from = tag_end;
+            continue;
+        }
+
+        // Landmarks navs contain only an <ol> of <li> links, never a nested
+        // <nav>, so the next closing tag ends this element.
+        let Some(close_rel) = result[tag_end..].find("</nav>") else {
+            break;
+        };
+        let close_end = tag_end + close_rel + "</nav>".len();
+
+        if result[tag_end..tag_end + close_rel].contains("<li") {
+            // Real landmark entries — keep the element.
+            search_from = close_end;
+            continue;
+        }
+
+        // Remove the element, plus its own-line indentation and trailing
+        // newline, so no blank line is left behind.
+        let line_start = result[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let removal_start = if result[line_start..start]
+            .chars()
+            .all(|c| c == ' ' || c == '\t')
+        {
+            line_start
+        } else {
+            start
+        };
+        let removal_end = if result[close_end..].starts_with('\n') {
+            close_end + 1
+        } else {
+            close_end
+        };
+
+        result.replace_range(removal_start..removal_end, "");
+        search_from = removal_start;
+    }
+
+    result
+}
+
+/// Renumber every `navPoint`'s `playOrder` in the generated toc.ncx.
+///
+/// epub-builder assigns a fresh sequential playOrder to every navPoint, so
+/// when the same target file appears in the TOC more than once (common in
+/// real books: a chapter listed both as a nested child and as a top-level
+/// entry), the duplicates get *different* playOrder values — which epubcheck
+/// rejects (RSC-005 "different playOrder values for navPoint/navTarget/
+/// pageTarget that refer to same target"). The NCX rule is the opposite:
+/// navPoints referring to the same content `src` must share one playOrder.
+///
+/// We renumber in document order, 1-based, advancing the counter only for the
+/// first appearance of each `src`; repeat references reuse the first value.
+/// String-level like the other rewrites here, robust to attribute order.
+fn renumber_ncx_play_order(ncx: &str) -> String {
+    // Opening <navPoint ...> tags, in document order.
+    let mut nav_tags: Vec<(usize, usize)> = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = ncx[pos..].find("<navPoint") {
+        let start = pos + rel;
+        let Some(tag_rel_end) = ncx[start..].find('>') else {
+            break;
+        };
+        let end = start + tag_rel_end + 1;
+        nav_tags.push((start, end));
+        pos = end;
+    }
+
+    // <content src="..."/> values, in document order.
+    let mut srcs: Vec<&str> = Vec::new();
+    pos = 0;
+    while let Some(rel) = ncx[pos..].find("<content") {
+        let start = pos + rel;
+        let Some(tag_rel_end) = ncx[start..].find('>') else {
+            break;
+        };
+        let end = start + tag_rel_end + 1;
+        let tag = &ncx[start..end];
+        if let Some(a) = tag.find("src=\"") {
+            let vstart = a + "src=\"".len();
+            if let Some(vlen) = tag[vstart..].find('"') {
+                srcs.push(&tag[vstart..vstart + vlen]);
+            }
+        }
+        pos = end;
+    }
+
+    // Valid NCX nests as navPoint = navLabel, content, navPoint* — each
+    // navPoint's own <content> precedes any nested navPoints, so the i-th
+    // opening tag pairs with the i-th <content>. If the document doesn't have
+    // that shape, leave it untouched rather than scrambling playOrder.
+    if nav_tags.len() != srcs.len() || nav_tags.is_empty() {
+        return ncx.to_string();
+    }
+
+    let mut assigned: HashMap<&str, usize> = HashMap::new();
+    let mut next = 1usize;
+    let numbers: Vec<usize> = srcs
+        .iter()
+        .map(|s| {
+            *assigned.entry(s).or_insert_with(|| {
+                let n = next;
+                next += 1;
+                n
+            })
+        })
+        .collect();
+
+    let mut out = String::with_capacity(ncx.len());
+    let mut cursor = 0;
+    for ((start, end), n) in nav_tags.iter().zip(numbers.iter()) {
+        out.push_str(&ncx[cursor..*start]);
+        out.push_str(&set_play_order(&ncx[*start..*end], *n));
+        cursor = *end;
+    }
+    out.push_str(&ncx[cursor..]);
+    out
+}
+
+/// Replace (or, defensively, insert) the `playOrder` attribute value inside a
+/// `<navPoint ...>` opening tag.
+fn set_play_order(tag: &str, n: usize) -> String {
+    let needle = "playOrder=\"";
+    if let Some(a) = tag.find(needle) {
+        let vstart = a + needle.len();
+        if let Some(vlen) = tag[vstart..].find('"') {
+            let mut out = String::with_capacity(tag.len() + 4);
+            out.push_str(&tag[..vstart]);
+            out.push_str(&n.to_string());
+            out.push_str(&tag[vstart + vlen..]);
+            return out;
+        }
+    }
+    // epub-builder always emits playOrder; insert it if a source ever doesn't.
+    format!("<navPoint playOrder=\"{}\"{}", n, &tag["<navPoint".len()..])
 }
 
 /// Inject `dir` and the document language onto the root `<html>` element of an

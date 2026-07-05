@@ -450,7 +450,7 @@ dependencies = [
 
 [[package]]
 name = "langelic_epub"
-version = "0.2.0"
+version = "0.2.2"
 dependencies = [
  "epub-builder",
  "quick-xml",

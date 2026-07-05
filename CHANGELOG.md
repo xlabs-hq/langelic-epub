@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-05
+
+### Fixed
+
+- The generated `nav.xhtml` no longer contains an empty
+  `<nav epub:type="landmarks">` wrapper. epub-builder emits the wrapper even
+  when there are no landmark entries, which fails epubcheck RSC-005
+  ("element \"nav\" incomplete; missing required element \"ol\""). The
+  writer's post-processing pass now strips a landmarks nav that has no
+  entries; a landmarks nav with real entries is kept verbatim. Built EPUBs
+  that previously carried this epubcheck error are now clean, and the test
+  suite no longer allowlists it.
+- The generated `toc.ncx` no longer trips epubcheck RSC-005 "different
+  playOrder values for navPoint/navTarget/pageTarget that refer to same
+  target". epub-builder gives every navPoint a fresh sequential `playOrder`,
+  so a file appearing in the TOC more than once (e.g. as both a nested child
+  and a top-level entry — common in real books) got distinct values where the
+  NCX spec requires one shared value. The writer now renumbers `playOrder` in
+  document order, 1-based, with repeat targets reusing the first occurrence's
+  value. The test suite no longer allowlists this error either.
+
 ## [0.2.1] - 2026-07-05
 
 ## [0.2.0] - 2026-07-05
@@ -103,7 +124,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and
   `x86_64-unknown-linux-musl`.
 
-[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.1.0...v0.1.1
