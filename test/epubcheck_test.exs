@@ -130,9 +130,10 @@ defmodule LangelicEpub.EpubcheckTest do
     # XHTML files with inline SVG must have `properties="svg"` in their OPF
     # <item>, but epub-builder's add_content doesn't accept properties.
     "property \"svg\" should be declared",
-    # epub-builder's NCX generator assigns playOrder that collides when the
-    # same target appears under multiple parent navPoints.
-    "different playOrder values",
+    # NOTE: `different playOrder values` (epub-builder giving repeat TOC
+    # targets distinct playOrder values) is now fixed by the writer's NCX
+    # renumbering pass and is deliberately NOT allowlisted.
+    #
     # When the input TOC's href ordering differs from spine ordering (e.g.,
     # "Other books by this author" appears before chapter 1 in TOC), epubcheck
     # flags the nav.xhtml entries as out of reading order. epub-builder has
