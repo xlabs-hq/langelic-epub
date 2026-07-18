@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-07-18
+
 ### Added
 
 - `LangelicEpub.Document` gains a `rendition_layout` field
@@ -142,7 +144,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `aarch64-unknown-linux-gnu`, `x86_64-unknown-linux-gnu`, and
   `x86_64-unknown-linux-musl`.
 
-[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/xlabs-hq/langelic-epub/compare/v0.2.0...v0.2.1
