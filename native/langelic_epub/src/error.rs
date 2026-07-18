@@ -34,6 +34,12 @@ pub enum AppError {
     #[error("invalid page-progression-direction {0:?}: expected \"rtl\", \"ltr\", or nil")]
     InvalidPageDirection(String),
 
+    #[error("invalid rendition layout {0:?}: expected \"pre-paginated\", \"reflowable\", or nil")]
+    InvalidRenditionLayout(String),
+
+    #[error("pre-paginated chapter {0:?} is missing a <meta name=\"viewport\"> declaration")]
+    MissingViewport(String),
+
     #[error("rust panic: {0}")]
     Panic(String),
 }
@@ -51,6 +57,8 @@ impl AppError {
             AppError::MissingRequiredField(_) => ErrorKind::MissingRequiredField,
             AppError::DuplicateId(_) => ErrorKind::DuplicateId,
             AppError::InvalidPageDirection(_) => ErrorKind::InvalidPageDirection,
+            AppError::InvalidRenditionLayout(_) => ErrorKind::InvalidRenditionLayout,
+            AppError::MissingViewport(_) => ErrorKind::MissingViewport,
             AppError::Panic(_) => ErrorKind::Panic,
         }
     }

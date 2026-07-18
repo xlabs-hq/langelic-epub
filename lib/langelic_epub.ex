@@ -72,6 +72,10 @@ defmodule LangelicEpub do
     * `:duplicate_id` — two chapters or assets share the same `id`
     * `:invalid_page_direction` — `page_progression_direction` is not `"rtl"`,
       `"ltr"`, or `nil`
+    * `:invalid_rendition_layout` — `rendition_layout` is not
+      `"pre-paginated"`, `"reflowable"`, or `nil`
+    * `:missing_viewport` — a pre-paginated XHTML spine chapter does not
+      contain a `<meta name="viewport">` declaration
     * `:panic` — Rust side panicked (report a bug)
   """
   @spec build(Document.t()) :: {:ok, binary()} | {:error, Error.t()}

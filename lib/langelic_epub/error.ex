@@ -25,6 +25,10 @@ defmodule LangelicEpub.Error do
     * `:duplicate_id` — two chapters or assets share the same `id`
     * `:invalid_page_direction` — `page_progression_direction` is not `"rtl"`,
       `"ltr"`, or `nil`
+    * `:invalid_rendition_layout` — `rendition_layout` is not
+      `"pre-paginated"`, `"reflowable"`, or `nil`
+    * `:missing_viewport` — a pre-paginated XHTML spine chapter does not
+      contain a `<meta name="viewport">` declaration
 
   Safety:
 
@@ -42,6 +46,8 @@ defmodule LangelicEpub.Error do
           | :invalid_chapter
           | :duplicate_id
           | :invalid_page_direction
+          | :invalid_rendition_layout
+          | :missing_viewport
           | :panic
 
   @type t :: %__MODULE__{kind: kind(), message: String.t()}

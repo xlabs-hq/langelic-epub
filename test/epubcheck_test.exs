@@ -8,7 +8,11 @@ defmodule LangelicEpub.EpubcheckTest do
 
   use ExUnit.Case, async: true
 
+  alias LangelicEpub.Asset
+  alias LangelicEpub.Chapter
+  alias LangelicEpub.Document
   alias LangelicEpub.EpubFixtureBuilder
+  alias LangelicEpub.NavItem
 
   @moduletag :external
 
@@ -77,6 +81,49 @@ defmodule LangelicEpub.EpubcheckTest do
               ~s|<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ar" dir="rtl"><head><title>الفصل الأول</title></head><body><h1>الفصل الأول</h1><p>مرحبا.</p></body></html>|
           }
         ]
+      }
+
+      {:ok, bytes} = LangelicEpub.build(doc)
+      assert_no_epubcheck_errors(bytes, epubcheck)
+    end
+
+    test "passes on a pre-paginated rtl comic", %{epubcheck: epubcheck} do
+      skip_if_missing!(epubcheck)
+
+      png =
+        Base.decode64!(
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+        )
+
+      doc = %Document{
+        title: "Three Page Manga",
+        language: "ja",
+        identifier: "urn:uuid:06e7abf4-7b24-42cc-9c96-7dd54649d85e",
+        creators: ["Manga Artist"],
+        rendition_layout: "pre-paginated",
+        page_progression_direction: "rtl",
+        cover_asset_id: "image1",
+        assets:
+          for i <- 1..3 do
+            %Asset{
+              id: "image#{i}",
+              file_name: "images/page-#{i}.png",
+              media_type: "image/png",
+              data: png
+            }
+          end,
+        spine:
+          for i <- 1..3 do
+            %Chapter{
+              id: "page#{i}",
+              file_name: "page-#{i}.xhtml",
+              title: "Page #{i}",
+              media_type: "application/xhtml+xml",
+              data:
+                ~s|<?xml version="1.0" encoding="UTF-8"?>\n<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="ja"><head><title>Page #{i}</title><meta name="viewport" content="width=900, height=1350"/></head><body><img src="images/page-#{i}.png" alt="Page #{i}"/></body></html>|
+            }
+          end,
+        toc: [%NavItem{title: "Page 1", href: "page-1.xhtml"}]
       }
 
       {:ok, bytes} = LangelicEpub.build(doc)

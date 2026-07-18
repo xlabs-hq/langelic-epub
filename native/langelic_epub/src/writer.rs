@@ -16,11 +16,11 @@
 //! generated EPUB: open the zip, rewrite the OPF, re-zip. The post-process
 //! step is a pure string edit — no re-parsing of the OPF XML tree.
 //!
-//! The same post-process pass owns page-progression-direction: epub-builder
-//! always writes `page-progression-direction="ltr"` on the spine and never
-//! sets `dir`/`lang` on the nav's `<html>` root, so we rewrite the spine
-//! attribute to match the document (or strip it when unspecified) and, for
-//! RTL, orient nav.xhtml. See `set_spine_direction` and
+//! The same post-process pass owns rendition layout and
+//! page-progression-direction: it injects explicit `rendition:layout`
+//! metadata, rewrites epub-builder's unconditional spine direction to match
+//! the document (or strips it when unspecified), and orients nav.xhtml for
+//! RTL. See `rewrite_opf_metadata`, `set_spine_direction`, and
 //! `add_dir_and_lang_to_html`.
 
 use crate::error::AppError;
@@ -137,17 +137,24 @@ fn validate(doc: &Document) -> Result<(), AppError> {
         None | Some("rtl") | Some("ltr") => {}
         Some(other) => return Err(AppError::InvalidPageDirection(other.to_string())),
     }
+    match doc.rendition_layout.as_deref() {
+        None | Some("pre-paginated") | Some("reflowable") => {}
+        Some(other) => return Err(AppError::InvalidRenditionLayout(other.to_string())),
+    }
 
     let mut ids: HashSet<&str> = HashSet::new();
     for ch in &doc.spine {
         if !ids.insert(ch.id.as_str()) {
             return Err(AppError::DuplicateId(ch.id.clone()));
         }
-        if std::str::from_utf8(&ch.data.0).is_err() {
-            return Err(AppError::InvalidChapter(
-                ch.id.clone(),
-                "data is not valid UTF-8".to_string(),
-            ));
+        let chapter_data = std::str::from_utf8(&ch.data.0).map_err(|_| {
+            AppError::InvalidChapter(ch.id.clone(), "data is not valid UTF-8".to_string())
+        })?;
+        if doc.rendition_layout.as_deref() == Some("pre-paginated")
+            && ch.media_type == "application/xhtml+xml"
+            && !has_viewport_meta(chapter_data)
+        {
+            return Err(AppError::MissingViewport(ch.id.clone()));
         }
     }
     for a in &doc.assets {
@@ -156,6 +163,25 @@ fn validate(doc: &Document) -> Result<(), AppError> {
         }
     }
     Ok(())
+}
+
+/// Check an XHTML string for a viewport `<meta>` declaration without parsing
+/// XML. Attribute order is irrelevant, and both XML quote styles are accepted.
+fn has_viewport_meta(xhtml: &str) -> bool {
+    let mut search_from = 0;
+    while let Some(rel_start) = xhtml[search_from..].find("<meta") {
+        let start = search_from + rel_start;
+        let Some(rel_end) = xhtml[start..].find('>') else {
+            return false;
+        };
+        let end = start + rel_end + 1;
+        let tag = &xhtml[start..end];
+        if tag.contains("name=\"viewport\"") || tag.contains("name='viewport'") {
+            return true;
+        }
+        search_from = end;
+    }
+    false
 }
 
 fn add_spine_and_toc(
@@ -247,6 +273,7 @@ fn identifier_to_uuid(identifier: &str) -> Uuid {
 ///     (so round-trips preserve the identifier exactly);
 ///   * inject `<dc:publisher>`, `<dc:date>`, `<dc:rights>`, and any custom
 ///     DC elements from the document's `metadata` map;
+///   * inject `<meta property="rendition:layout">` when requested;
 ///   * set (or strip) the `<spine>` `page-progression-direction` attribute to
 ///     match `doc.page_progression_direction`.
 ///
@@ -302,6 +329,9 @@ fn patch_opf(epub_bytes: Vec<u8>, doc: &Document) -> Result<Vec<u8>, AppError> {
                 let original = read_entry(&mut archive, &name)?;
                 let original_str = String::from_utf8(original)
                     .map_err(|_| AppError::Io("nav not utf-8".to_string()))?;
+                // epubcheck 5.3.0 accepts a pre-paginated publication's
+                // generated nav without viewport metadata when nav is not in
+                // the spine, so fixed-layout builds leave its <head> alone.
                 let mut patched = strip_empty_landmarks_nav(&original_str);
                 if nav_rtl {
                     patched = add_dir_and_lang_to_html(&patched, "rtl", doc.language.as_deref());
@@ -383,7 +413,8 @@ fn read_entry(
 ///   * replace the content of `<dc:identifier id="epub-id-1">...</dc:identifier>`
 ///     with the original identifier verbatim;
 ///   * inject `<dc:publisher>`, `<dc:date>`, `<dc:rights>`, and any DC elements
-///     from `doc.metadata` just before `</metadata>`.
+///     from `doc.metadata`, plus `rendition:layout` when requested, just before
+///     `</metadata>`.
 fn rewrite_opf_metadata(opf: &str, doc: &Document) -> String {
     let mut result = opf.to_string();
 
@@ -398,8 +429,16 @@ fn rewrite_opf_metadata(opf: &str, doc: &Document) -> String {
         }
     }
 
-    // 2. Inject missing DC elements before </metadata>.
-    let extra = build_extra_dc_xml(doc);
+    // 2. Inject missing DC elements and explicit rendition layout metadata
+    //    before </metadata>. `rendition` is a predefined EPUB 3 vocabulary, so
+    //    the package needs no prefix declaration.
+    let mut extra = build_extra_dc_xml(doc);
+    if let Some(layout) = doc.rendition_layout.as_deref() {
+        extra.push_str(&format!(
+            "    <meta property=\"rendition:layout\">{}</meta>\n",
+            xml_escape(layout)
+        ));
+    }
     if !extra.is_empty() {
         if let Some(idx) = result.find("</metadata>") {
             result.insert_str(idx, &extra);

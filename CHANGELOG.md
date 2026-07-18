@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `LangelicEpub.Document` gains a `rendition_layout` field
+  (`"pre-paginated"`, `"reflowable"`, or `nil`). When set, `build/1` writes
+  the EPUB 3 `<meta property="rendition:layout">` metadata needed for
+  fixed-layout comics and manga or for an explicit reflowable rendition.
+  Pre-paginated builds require every XHTML spine chapter to carry its own
+  `<meta name="viewport">` declaration, failing at build time with
+  `kind: :missing_viewport` and the offending chapter ID when one is absent.
+- `LangelicEpub.Error` may now have `kind: :invalid_rendition_layout` when
+  `rendition_layout` is anything other than `"pre-paginated"`,
+  `"reflowable"`, or `nil`. The reader deliberately does not surface a source
+  EPUB's layout: `parse/1` always returns `rendition_layout: nil`, keeping
+  layout a target-publication decision rather than silently leaking it into a
+  rebuild.
+
 ## [0.2.3] - 2026-07-05
 
 ## [0.2.2] - 2026-07-05

@@ -86,6 +86,10 @@ pub fn parse(bytes: &[u8]) -> Result<Document, AppError> {
         // be actively wrong: Japanese source EPUBs are frequently ppd="rtl" for
         // vertical writing, and a ja→en rebuild must shed that.
         page_progression_direction: None,
+        // Deliberately not round-tripped from the source. Fixed versus
+        // reflowable layout is a target-publication decision, just like page
+        // progression direction above.
+        rendition_layout: None,
     })
 }
 

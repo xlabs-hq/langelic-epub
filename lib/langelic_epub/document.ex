@@ -21,6 +21,26 @@ defmodule LangelicEpub.Document do
   This field is set from the **target** language at build time. `parse/1` always
   returns `nil` here — a source EPUB's direction is intentionally not
   round-tripped (a `rtl` Japanese source rebuilt into English must shed it).
+
+  ## Rendition layout (fixed-layout / comics)
+
+  `rendition_layout` sets the OPF `rendition:layout` metadata used to choose
+  between fixed-layout and reflowable rendering. Allowed values:
+
+    * `"pre-paginated"` — fixed-layout pages, suitable for comics and manga
+    * `"reflowable"` — explicitly request reflowable rendering
+    * `nil` — omit all rendition metadata
+
+  Any other value makes `LangelicEpub.build/1` return
+  `{:error, %LangelicEpub.Error{kind: :invalid_rendition_layout}}`.
+
+  Pre-paginated XHTML chapters must each contain a
+  `<meta name="viewport">` declaration. A missing declaration makes `build/1`
+  return `{:error, %LangelicEpub.Error{kind: :missing_viewport}}`.
+
+  This field is set for the **target** publication at build time. `parse/1`
+  always returns `nil` here — a source EPUB's layout is intentionally not
+  round-tripped into a rebuild.
   """
 
   @type t :: %__MODULE__{
@@ -38,7 +58,8 @@ defmodule LangelicEpub.Document do
           toc: [LangelicEpub.NavItem.t()],
           cover_asset_id: String.t() | nil,
           version: String.t(),
-          page_progression_direction: String.t() | nil
+          page_progression_direction: String.t() | nil,
+          rendition_layout: String.t() | nil
         }
 
   defstruct title: "",
@@ -55,5 +76,6 @@ defmodule LangelicEpub.Document do
             toc: [],
             cover_asset_id: nil,
             version: "3.0",
-            page_progression_direction: nil
+            page_progression_direction: nil,
+            rendition_layout: nil
 end

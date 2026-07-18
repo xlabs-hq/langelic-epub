@@ -74,6 +74,12 @@ pub struct Document {
     /// build time; deliberately never populated on the read side (see
     /// `reader.rs`).
     pub page_progression_direction: Option<String>,
+    /// OPF rendition layout: `Some("pre-paginated")`, `Some("reflowable")`,
+    /// or `None` (omit the metadata). Any other value is rejected at build
+    /// time with `ErrorKind::InvalidRenditionLayout`. This is a target
+    /// publication decision and is deliberately never populated on the read
+    /// side (see `reader.rs`).
+    pub rendition_layout: Option<String>,
 }
 
 #[derive(NifUnitEnum, Debug, Clone, Copy)]
@@ -89,5 +95,7 @@ pub enum ErrorKind {
     MissingRequiredField,
     DuplicateId,
     InvalidPageDirection,
+    InvalidRenditionLayout,
+    MissingViewport,
     Panic,
 }
